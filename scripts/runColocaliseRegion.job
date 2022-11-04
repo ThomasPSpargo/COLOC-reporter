@@ -1,0 +1,62 @@
+#!/bin/bash
+#SBATCH --partition=cpu
+#SBATCH --mem-per-cpu=10G
+#SBATCH --time=0-1:00
+#SBATCH --tasks=1 
+
+#Load required modules
+module load r
+module load plink
+
+#####
+# INPUT files
+#####
+
+
+#Path to the script to run
+scriptpath=$1
+
+	
+# extract phenotype IDs and locus to analyse
+p1=$2
+p2=$3
+locus=$4
+GWASinfo=$5
+
+
+#Set analysis options
+LDREFERENCE=$6		#File path and prefix for LD reference plink-binary files
+outpath=$7		#File path and prefix for the output files. Expects P1.P2 delimited
+sumplots=$8		#Which summary plots to generate
+sumplots_onefile=$9 	#Logical indicating whether to put summary plots all into one file
+
+#Path to plink executable
+plinkpath=${10}
+
+runMode=doBoth		#Which analyses to run. By default tries running both coloc.abf and coloc.susie (assuming CS found when running SuSiE)
+	
+
+tmp_dir=$(mktemp -d -t ci-XXXXXXXXXX)
+
+cd  $tmp_dir
+
+#Print to log that a new analysis loop has begun
+printf "########################\nAnalyse traits $p1 and $p2 at locus ${locus}\n\n"
+	
+
+Rscript $scriptpath \
+		--LDreference $LDREFERENCE \
+		--plink $plinkpath \
+		--set_locus $locus \
+		--runMode $runMode \
+		--GWASsumplots $sumplots \
+		--GWASsumplots_onefile $sumplots_onefile \
+		--force_matrix FALSE \
+		--out $outpath \
+		--traits "${p1},${p2}" \
+		--GWASconfig ${GWASinfo}
+
+
+
+
+rm -rf $tmp_dir
