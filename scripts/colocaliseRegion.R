@@ -41,7 +41,15 @@ option_list = list(
   make_option("--GWASsumplots_incfinemapping", action="store", default=TRUE, type='logical',
               help="Logical, defaults to TRUE. If TRUE, and if any credible sets are identified across the two traits, plots returned by --GWASsumplots will include colouring indicating which snps belong to which credible sets."),
   make_option("--genomeAlignment", action="store", default=37, type='numeric',
-              help="Indicate the reference genome to which summary statistics and LD reference are aligned. Defaults to 37,"),
+              help="Indicate the reference genome to which summary statistics and LD reference are aligned. Defaults to 37."),
+  make_option("--gene_tracks", action="store", default=NULL, type='numeric',
+              help="Numeric. Specify the threshold at which plotting of nearby genes changes from one gene per row to plotting multiple genes across individual rows, labelling genes with geom_text_repel. Defaults to NULL, where per-row plotting has no upper limit. Specify 1 to always plot multiple genes per row, provided their genomic positions do not overlap [work in progress]."),
+  make_option("--restrict_nearby_gene_plotting_source", action="store", default=NULL, type='character',
+              help="Comma delimited character string indicating sources from which nearby genes included in plots are retrieved. Check output tables 'external_gene_source' column for options. Included as an option to reduce overplotting of obscure gene symbols. If NULL, all sources will plot"),
+  make_option("--helperFunsDir", action="store", default=NULL, type='character',
+              help="Filepath to directory containing helper functions used within the script"),
+  
+  
   
   #Options For summary statistics 1 (will also be applied to summary statistics 2 if --match_sum1_cols TRUE and if options are not otherwise specified)
   make_option("--sumstat1", action="store", default=NA, type='character',
@@ -64,8 +72,8 @@ option_list = list(
               help="Column name for test statistic error"),
   make_option("--snpcol1", action="store", default=NA, type='character',
               help="Column name for SNP ids"),
-  make_option("--MAF1", action="store", default="REF.FREQ", type='character',
-              help="Column name MAF information"),
+  make_option("--freq1", action="store", default="REF.FREQ", type='character',
+              help="Column name with allele frequency information"),
   
   #Duplicated options for summary statistics 2
   make_option("--sumstat2", action="store", default=NA, type='character',
@@ -88,8 +96,8 @@ option_list = list(
               help="Column name for test statistic error"),
   make_option("--snpcol2", action="store", default=NA, type='character',
               help="Column name for SNP ids"),
-  make_option("--MAF2", action="store", default="REF.FREQ", type='character',
-              help="Column name MAF information")
+  make_option("--freq2", action="store", default="REF.FREQ", type='character',
+              help="Column name with allele frequency information")
 )
 
 opt = parse_args(OptionParser(option_list=option_list))
@@ -97,17 +105,16 @@ opt = parse_args(OptionParser(option_list=option_list))
 #######
 ### Begin script
 #######
-options(echo=TRUE)
+#options(echo=FALSE)
 
 suppressPackageStartupMessages({
+  library(tidyverse)
   library(data.table) #To read in the datasets
   library(R.utils)    #Required reading gz files directly with fread
-  library(dplyr)
   library(coloc)
   library(susieR)
   library(biomaRt)    #For ensembl library
   library(ggrepel)
-  library(ggplot2)
   library(egg)     #arranging summary plot
 })
 
@@ -123,10 +130,10 @@ if(test==TRUE){
   
   # # #TESTING V1
   opt$set_locus <- "17,43460501,44865832"
-  opt$sumstat1 <- "./PD.sumstats.txt"
-  opt$sumstat2 <- "./SZ.sumstats.txt"
-  opt$MAF2 <- "REF.FREQ"
-  opt$out <- "./testing_PD.SZ.chr17"
+  opt$sumstat1 <- "./PD.sumstats.gz"
+  opt$sumstat2 <- "./SZ.sumstats.gz"
+  opt$freq2 <- "REF.FREQ"
+  opt$out <- "./test_v2_PD.SZ.chr17"
   opt$traits <- c("PD,SZ")
   opt$traitLabel1 <- "Parkinson's Disease"
   opt$traitLabel2 <- "Schizophrenia"
@@ -135,7 +142,7 @@ if(test==TRUE){
   # opt$set_locus <- "9,27366480,28067454"
   # opt$sumstat1 <- "./ALS.sumstats.txt"
   # opt$sumstat2 <- "./SZ.sumstats.txt"
-  # opt$MAF2 <- "REF.FREQ"
+  # opt$freq2 <- "REF.FREQ"
   # opt$out <- "./testing_ALS.SZ.chr9"
   #opt$traits <- c("ALS,SZ")
   # opt$traitLabel1 <- "Amyotrophic lateral sclerosis"
@@ -145,7 +152,7 @@ if(test==TRUE){
   # opt$set_locus <- "16,86058598,86748867"
   # opt$sumstat1 <- "./ALS.sumstats.txt"
   # opt$sumstat2 <- "./PD.sumstats.txt"
-  # opt$MAF2 <- "FREQ"
+  # opt$freq2 <- "FREQ"
   # opt$out <- "./testing_ALS.PD.chr16"
   #opt$traits <- c("ALS,PD")
   # opt$traitLabel1 <- "Amyotrophic lateral sclerosis"
@@ -163,8 +170,11 @@ if(test==TRUE){
   opt$positions1 <- "BP"
   opt$error1 <- "SE"
   opt$snpcol1 <- "SNP"
-  opt$MAF1 <- "FREQ"
+  opt$freq1 <- "FREQ"
   opt$match_sum1_opts <- TRUE
+  opt$gene_tracks <- 40
+  opt$restrict_nearby_gene_plotting_source <- "HGNC Symbol"
+  opt$helperFunsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
   
   opt$genomeAlignment <- 37
   opt$GWASsumplots <- c("PIP","p","beta")
@@ -172,7 +182,7 @@ if(test==TRUE){
   opt$GWASsumplots_incfinemapping <- TRUE
   
   
-  #Assign default options for testing, except opt$MAF2, which has unique name across sumstats
+  #Assign default options for testing, except opt$freq2, which has unique name across sumstats
   opt$type2 <- opt$pcolumn2 <- opt$statcol2 <- opt$Ncol2 <- opt$chromosome2 <- opt$positions2 <- opt$error2 <- opt$snpcol2 <- NA
   opt$prop2 <- 0.5
 }
@@ -199,7 +209,7 @@ if(!is.null(opt$GWASconfig)){
   opt$positions1 <- GWASconfig$positions[Config.index[1]]
   opt$error1 <- GWASconfig$error[Config.index[1]]
   opt$snpcol1 <- GWASconfig$snpcol[Config.index[1]]
-  opt$MAF1 <- GWASconfig$MAF[Config.index[1]]
+  opt$freq1 <- GWASconfig$freq[Config.index[1]]
   opt$traitLabel1 <- GWASconfig$traitLabel[Config.index[1]]
   opt$sumstat1 <- GWASconfig$FILEPATH[Config.index[1]]
   
@@ -212,7 +222,7 @@ if(!is.null(opt$GWASconfig)){
   opt$positions2 <- GWASconfig$positions[Config.index[2]]
   opt$error2 <- GWASconfig$error[Config.index[2]]
   opt$snpcol2 <- GWASconfig$snpcol[Config.index[2]]
-  opt$MAF2 <- GWASconfig$MAF[Config.index[2]]
+  opt$freq2 <- GWASconfig$freq[Config.index[2]]
   opt$traitLabel2 <- GWASconfig$traitLabel[Config.index[2]]
   opt$sumstat2 <- GWASconfig$FILEPATH[Config.index[2]]
   
@@ -230,7 +240,7 @@ if(isTRUE(opt$match_sum1_opts) && is.null(opt$GWASconfig)){
   if(is.na(opt$positions2)){opt$positions2 <- opt$positions1}
   if(is.na(opt$error2)){opt$error2 <- opt$error1}
   if(is.na(opt$snpcol2)){opt$snpcol2 <- opt$snpcol1}
-  if(is.na(opt$MAF2)){opt$MAF2 <- opt$MAF1}
+  if(is.na(opt$freq2)){opt$freq2 <- opt$freq1}
   
   if(is.na(opt$type2)){opt$type2 <- opt$type1}
   if(opt$prop2==0.5){opt$prop2 <- opt$prop1}
@@ -240,14 +250,16 @@ if(isTRUE(opt$match_sum1_opts) && is.null(opt$GWASconfig)){
 names(traits) <- c(opt$traitLabel1, opt$traitLabel2) 
 
 
-opt$out <- paste0(opt$out,"_coloc/")
+opt$out <- paste0(opt$out,"_coloc")
 if(!dir.exists(opt$out)){dir.create(opt$out,recursive = TRUE)}
 
 #Set up directories in which to return tables and figures
-figdir <- paste0(opt$out,"plots/")
+figdir <- file.path(opt$out,"plots")
 if(!dir.exists(figdir)){dir.create(figdir)}
-tabdir <- paste0(opt$out,"tables/")
+tabdir <- file.path(opt$out,"tables")
 if(!dir.exists(tabdir)){dir.create(tabdir)}
+
+logfile <- file.path(opt$out,'colocalisation.log')
 
 #Setup a colour palette to be used across ggplots (colours taken from plot SuSiE)
 ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00", 
@@ -256,130 +268,7 @@ ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00",
               "blue1", "steelblue4", "darkturquoise", "green1", "yellow4", 
               "yellow3", "darkorange4", "brown")
 
-#Define a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
-ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMapping=NULL,shapeMapping=NULL,figdir,traits,returnplot=TRUE,
-                          facetTraits=FALSE,nameColourLegend="Trait: Credible set",nameShapeLegend=NULL,alignment){
-  
-  #Setup y-axis parameters
-  if(tolower(yaxis)=="p"){
-    ylab <- bquote(-log[10]~p)
-    ystring <- "-log10(pvalues)"
-  } else if (tolower(yaxis)=="z"){
-    dset$z <- abs(dset$beta/dset$SE)
-    ylab <- "Absolute Z-score"
-    ystring <- "z"
-  } else if(tolower(yaxis)=="pip"){
-    ylab <-  "PIP"
-    ystring <- "variable_prob"
-  } else if(tolower(yaxis)=="snp.pp"){
-    ylab <- "Posterior probability of being a shared variant\n"
-    ystring <- "SNP.PP"
-  } else {
-    ylab <- yaxis
-    ystring <- tolower(yaxis)
-  }
-  
-  if(facetTraits==TRUE){
-    dset$trait<- factor(dset$trait,levels=traits,labels = names(traits))
-  }
-  
-  
-  #Generate plot
-  plot_root <- ggplot(dset,aes_string(x=xstring,y=ystring,color=colourMapping,shape=shapeMapping))+
-    geom_point()+
-    theme_bw()+
-    xlim(xlim)+
-    labs(y=ylab,x=paste0("GRCh",alignment," genomic position (",target_region,")"))
-  
-  if(facetTraits==TRUE){
-    plot_root <- plot_root +
-      facet_wrap(~trait, nrow = 1)
-  }
-  
-  #Add Colouring if specified
-  if(!is.null(colourMapping)){
-    plot_root <- plot_root +
-      scale_colour_manual(na.value = "black", values=ggpalette,
-                          breaks=levels(dset[[which(colnames(dset)==colourMapping)]])
-      )+
-      guides(color=guide_legend(title=nameColourLegend,order=1))
-  }
-  
-  #Add shapes if specified
-  if(!is.null(shapeMapping)){
-    plot_root <- plot_root +
-      #scale_shape_manual(na.value = 19, values=17,breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
-    scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
-                                            
-      )+
-      guides(shape=guide_legend(title=nameShapeLegend,order=2))
-  }
-  
-  #Return either the plot itself or ggsave directly, according to return plot option
-  if(returnplot){
-    return(plot_root)
-  } else {
-    #GGsave returns character string indicating where file was written
-    ggsave(paste0(figdir,paste0(traits,collapse="_"),"_",tolower(yaxis),"_summaryplot.pdf"),
-           plot_root,device="pdf",units="mm",width=175,height=75)
-  }
-}
-
-
-#Generate plots in a column with a shared legend, using custom function which wraps around egg::ggarrange and draws upon grid functionality to produce shared legend
-
-#x is a list of ggplots to be stacked vertically and assigned a shared figure legend
-#position of legend is either "right" or "bottom"
-# ... arguments passed to egg::ggarrange
-
-egg_ggarr_wlegend <- function(p,position="right",...){
-  #Syntax developed based on
-  #https://github.com/tidyverse/ggplot2/wiki/Share-a-legend-between-two-ggplot2-graphs
-  
-  # #Extract legend from first figure as a grob, then determine parameters
-  g <- ggplotGrob(p[[1]] + theme(legend.position = position))$grobs
-  is.legend <- which(sapply(g, function(x) x$name) == "guide-box")
-  if(length(is.legend)>0){
-    legend <- g[[is.legend]]
-    lheight <- sum(legend$height)
-    lwidth <- sum(legend$width)
-    #Drop legend from individual plots
-    p <-  lapply(p, function(x) x + theme(legend.position="none"))
-  }
-  
-  
-  #Always drop duplicated x-axis labeling elements, since columns are always stacked vertically
-  p[1:(length(p)-1)] <-  lapply(p[1:(length(p)-1)], function(x) x + theme(axis.title.x = element_blank(),
-                                                                          axis.line.x = element_blank(),
-                                                                          axis.text.x = element_blank())
-  )
-  
-  #Using egg_ggarrange, combine the plots with legend removed; egg::ggarrange ensures combined plots are well formatted
-  eggP <- egg::ggarrange(plots=p,...)
-  
-  if(length(is.legend)>0){
-    #Then, using grid functionality (which should be installed already, as a dependency of egg)
-    eggP <- switch(position,
-                   "bottom" = arrangeGrob(eggP,
-                                          legend,
-                                          ncol = 1,
-                                          heights = grid::unit.c(grid::unit(1, "npc") - lheight, lheight)
-                   ),
-                   "right" = arrangeGrob(eggP,
-                                         legend,
-                                         ncol = 2,
-                                         widths = grid::unit.c(grid::unit(1, "npc") - lwidth, lwidth)
-                   ))
-    
-    grid::grid.newpage()
-    grid::grid.draw(eggP)
- 
-    # return gtable invisibly
-    invisible(eggP)
-  }
-  return(eggP)
-}
-sink(file = paste0(opt$out,'colocalisation.log'), append = F)
+sink(file = logfile, append = F)
 cat(
   '#################################################################
 # colocaliseRegion.R
@@ -397,10 +286,15 @@ print(opt)
 cat("\n######\n### Setup \n######\n\n")
 
 cat("All outputs will be returned in the directory: ", opt$out,"\n")
-cat("All figures are returned in the subdirectory: plots/\n")
-cat("and tabular summaries in the subdirectory: tables/\n\n")
+cat("All figures are returned in the subdirectory: ",basename(figdir),"\n")
+cat("and tabular summaries in the subdirectory: ",basename(tabdir),"\n\n")
 
 sink()
+
+#Read-in custom helper functions stored in directory specified by opt$helperFunsDir
+list.files(opt$helperFunsDir,full.names = TRUE,pattern=".R") %>%
+  lapply(.,source) %>%
+  invisible(.)
 
 if(length(opt$GWASsumplots)>0){
   #Parse the comma delimited list
@@ -409,7 +303,7 @@ if(length(opt$GWASsumplots)>0){
   #Return warning if any of the gwas summary plot options are not recognised, then drop the unrecognised elements
   checksumplots<- tolower(opt$GWASsumplots) %in% c('pip','p','z','beta')
   if(any(!checksumplots)){
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("WARNING: The --GWASsumplots option contained unrecognised strings which have been dropped. Please indicate any combination of 'pip', 'p', 'z', 'beta', case-insensitive)")
     sink()
     
@@ -428,7 +322,7 @@ sums1 <- tibble(fread(opt$sumstat1))
 
 #Check for column name options match the dataset, warn if not
 colcheck <-  which(!(
-  c(opt$pcolumn1,opt$statcol1,opt$Ncol1,opt$chromosome1,opt$positions1,opt$error1,opt$snpcol1,opt$MAF1)
+  c(opt$pcolumn1,opt$statcol1,opt$Ncol1,opt$chromosome1,opt$positions1,opt$error1,opt$snpcol1,opt$freq1)
   %in% colnames(sums1)
 ))
 if(length(colcheck)>0){
@@ -449,7 +343,7 @@ names(sums1)[names(sums1)==opt$chromosome1] <- "chr"
 names(sums1)[names(sums1)==opt$positions1] <- "pos"
 names(sums1)[names(sums1)==opt$error1] <- "SE"
 names(sums1)[names(sums1)==opt$snpcol1] <- "snp"
-names(sums1)[names(sums1)==opt$MAF1] <- "MAF"
+names(sums1)[names(sums1)==opt$freq1] <- "MAF"
 
 
 ########
@@ -463,7 +357,7 @@ sums2 <- tibble(fread(opt$sumstat2))
 
 #Check for column name options match the dataset
 colcheck <-  which(!(
-  c(opt$pcolumn2,opt$statcol2,opt$Ncol2,opt$chromosome2,opt$positions2,opt$error2,opt$snpcol2,opt$MAF2)
+  c(opt$pcolumn2,opt$statcol2,opt$Ncol2,opt$chromosome2,opt$positions2,opt$error2,opt$snpcol2,opt$freq2)
   %in% colnames(sums2)
 ))
 if(length(colcheck)>0){
@@ -485,7 +379,7 @@ names(sums2)[names(sums2)==opt$chromosome2] <- "chr"
 names(sums2)[names(sums2)==opt$positions2] <- "pos"
 names(sums2)[names(sums2)==opt$error2] <- "SE"
 names(sums2)[names(sums2)==opt$snpcol2] <- "snp"
-names(sums2)[names(sums2)==opt$MAF2] <- "MAF"
+names(sums2)[names(sums2)==opt$freq2] <- "MAF"
 
 
 
@@ -530,7 +424,7 @@ if(!is.na(opt$set_locus)){
 
 target_region <- paste0("chr",reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"])
 
-sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+sink(file = logfile, append = T)
 cat(paste0("Colocalisation analysis will be performed for the region: ", target_region," \n"))
 sink()
 
@@ -552,7 +446,7 @@ sums1.region <- sums1 %>%
   ) %>%
   arrange(match(snp, bim[["V2"]]))
 
-sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+sink(file = logfile, append = T)
 cat("Number of SNPs from sumstat 1 in tested region and LD reference:", nrow(sums1.region),"\n")
 sink()
 
@@ -566,14 +460,14 @@ sums2.region <- sums2 %>%
   arrange(match(snp, bim[["V2"]]))
   
 
-sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+sink(file = logfile, append = T)
 cat("Number of SNPs from sumstat 2 in tested region and LD reference:", nrow(sums2.region),"\n")
 sink()
 
 #Intersect the two snp lists
 snplist <- intersect(sums1.region$snp, sums2.region$snp)
 
-sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+sink(file = logfile, append = T)
 #Print some information to console
 cat(paste0("N SNPs overlapping for both traits: ", length(snplist),"\n"))
 sink()
@@ -613,7 +507,7 @@ sums2.region <- alignSS(sums2.region,bim)
 #Return warning if the SNP position alignment seems incorrect
 if(!identical(paste0(sums1.region$snp,"_",sums1.region$pos),
              paste0(sums2.region$snp,"_",sums2.region$pos))){
-  sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+  sink(file = logfile, append = T)
   cat("WARNING: SNP names and genomic positions do not match between datasets. Please check that these have been aligned correctly.")
   sink()
 }
@@ -629,18 +523,18 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
   
   #Check for the expected LD matrix output; if files are absent or if --force_matrix is set, generate using PLINK
   expect <- c(".snplist",".ld")
-  expect <- paste0(opt$out,'LDmatrix/ld_matrix',expect)
+  expect <- file.path(opt$out,'LDmatrix',paste0('ld_matrix',expect))
   
   if(any(!file.exists(expect)) | opt$force_matrix){
     
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("Computing LD matrix...")
     sink()
     
     ld_dir<- dirname(expect[1])
     
     if(!dir.exists(ld_dir)){dir.create(ld_dir,recursive = TRUE)}
-    write(snplist, file=paste0(ld_dir,"/snplist.txt"))
+    write(snplist, file=file.path(ld_dir,"snplist.txt"))
     
     #Identify LD matrixsnps from snplist present in reference
     #Syntax based on plink v 1.9
@@ -649,14 +543,14 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
                   ' --r square',
                   ' --write-snplist',
                   ' --keep-allele-order',
-                  ' --out ',ld_dir,'/ld_matrix'))
+                  ' --out ',file.path(ld_dir,'ld_matrix')))
     
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("Done\n")
     sink()
     
   } else {
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("Existing LD matrix found, skipping call to PLINK\n")
     sink()
   }
@@ -668,12 +562,12 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
   
   #As a sanity check, redo alignment based on plink output order to ensure snps are correctly arranged in base pair order, and assign 'positions' for coloc
   sums1.region <- sums1.region %>%
-    filter(snp %in% all_of(ld_names)) %>%
+    filter(snp %in% ld_names) %>%
     arrange(match(snp, ld_names)) %>%
     mutate(position = row_number())
   
   sums2.region <- sums2.region %>%
-    filter(snp %in% all_of(ld_names)) %>%
+    filter(snp %in% ld_names) %>%
     arrange(match(snp, ld_names)) %>%
     mutate(position = row_number())
 } 
@@ -712,7 +606,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){sums2.region$LD <- ld}
 
 #Import gene information for region
 ensembl = useEnsembl(biomart="ensembl", dataset="hsapiens_gene_ensembl", GRCh=opt$genomeAlignment)
-Genes<-getBM(attributes=c('external_gene_name','chromosome_name','start_position','end_position','external_gene_source'), mart = ensembl)
+Genes<-getBM(attributes=c('external_gene_name','chromosome_name','start_position','end_position','external_gene_source','strand'), mart = ensembl)
 
 # Use 10kb window to define gene window
 gene_window<-10000
@@ -739,7 +633,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     sets<- cbind(sets,basedata[sets$variable,c("snp","chr","pos","pvalues","beta","SE")]) #Add relevant columns from GWAS sumstats
     
     #Save PIP summaries to file
-    sets_outpath<- paste0(tabdir,"susie_snp_summary_",trait,".csv")
+    sets_outpath<- file.path(tabdir,paste0("susie_snp_summary_",trait,".csv"))
     write.table(sets,file=sets_outpath,sep = ",",row.names=FALSE)
     tab_out<- paste0("PIP summaries for SNPs for ",trait," are tabulated in:\n", basename(sets_outpath),"\n") #Info string
     
@@ -770,7 +664,11 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
       title <- trait
     }
     
-    pips<- ggplot(sets,aes_string(x="pos",y="variable_prob",color=colourMapping))+
+    #Supply string-based aesthetic elements via list
+    aesthetics<- list(colour=colourMapping) %>%
+      lapply(., function(x) if (!is.null(x)) sym(x))
+    
+    pips<- ggplot(sets,aes(x=pos,y=variable_prob,!!!aesthetics))+
       geom_point() +
       theme_bw()+
       theme(plot.title = element_text(hjust=0.5))+
@@ -783,7 +681,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
         guides(color=guide_legend(title="Credible set"))
     }
     
-    ggsave(paste0(figdir,"susie_PIP_",trait,".pdf"),pips,device="pdf",units="mm",width=150,height=150)
+    ggsave(file.path(figdir,paste0("susie_PIP_",trait,".pdf")),pips,device="pdf",units="mm",width=150,height=150)
     
     if(csFound){
       ##### Create summary file    
@@ -821,7 +719,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
           finemap_summary$Genes_near_span[j]<-paste(Genes_subset$external_gene_name, collapse=', ')
           
           #Save details for genes near to credible set #NO MENTION OF THIS OUTPUT IN THE REPORT
-          sets_outpath<- paste0(tabdir,"nearby_genes_",trait,"_cs",j,".csv")
+          sets_outpath<- file.path(tabdir,paste0("nearby_genes_",trait,"_cs",j,".csv"))
           Genes_subset %>%
             dplyr::select(-c(start_window,end_window)) %>%
             write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
@@ -837,7 +735,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     }
     
     #Sink directly to file
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("------------------------------\n")
     cat("SuSiE finemap result for", trait,":\n")
     print(finemap_summary)
@@ -861,7 +759,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     }
     
     #If triggered, Return the error/warning in summary file
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("------------------------------\n")
     cat("SuSiE fine-mapping ", type," produced for", traits[ntrait],". Please see the following:\n")
     cat(type," in", toString(last.warning),":\n",names(last.warning),"\n")
@@ -869,7 +767,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     sink()
   }
   
-  sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+  sink(file = logfile, append = T)
   cat("\n######\n### SuSiE fine-mapping results\n######\n\n")
   sink()
   #Run SuSiE for both datasets and generate report summaries
@@ -908,19 +806,19 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     ######
     ### Check alignment of Beta and LD, may lead to issues with LD matrix convergence if not aligned in the same direction
     ######
-    pdf(file=paste0(figdir,"Beta_LD_alignment.pdf"),width=14,height=7)
+    pdf(file=file.path(figdir,"Beta_LD_alignment.pdf"),width=14,height=7)
     par(mfrow=c(1,2))
     check_alignment(sums1.region)
     check_alignment(sums2.region)
     dev.off()
     
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("The SuSiE fine-mapping step failed for at least one of the two traits (see above).\n")
     cat("The figure 'Beta_LD_alignment.pdf' has also been generated, which allows checking of alignment between summary statistic beta's and the LD matrix.\nSee https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
     sink()
     
   } else if(!all(susie1_rep$csFound,susie2_rep$csFound)){
-    sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+    sink(file = logfile, append = T)
     cat("Credible sets were not identified for at least one trait, thus coloc.susie cannot be utilised.\n")
     sink()
   }
@@ -950,40 +848,7 @@ if(length(opt$GWASsumplots)>0){
   #According to whether any CS have been found, add a CS column to the dataframe
   if(susie1_rep$csFound || susie2_rep$csFound){
     
-    ###Function to create a character vector based on how variants are distributed across credible sets for each trait
-    
-    # x and y are dataframes with snp column used as an ID and cs column indicating credible set assignments as a factor. nrow(x) should equal nrow(y)
-    # x/ytrait denote an identtifier for each trait
-    joinLabels <- function(x, y,traits){
-      
-      # z is a factor class vector, trait is the associated trait
-      refactor <- function(z,trait){
-        #Reformat factor levels if not all NA
-        len<- length(levels(z))
-        if(len>0){levels(z) <- c(paste0(trait,":",1:len))}
-        z <- addNA(z)                      #Add a NA factor level
-        levels(z)[length(levels(z))] <- "" #Set NA level as empty string
-        z
-      }
-      
-      #Refactor both x and y traits
-      x$cs<- refactor(x$cs,traits[1])
-      y$cs<- refactor(y$cs,traits[2])
-      
-      #Combine into a snp and credible set data frame
-      xy <- full_join(x,y,by="snp") %>%
-        mutate(cs=case_when(cs.x == "" & cs.y == "" ~ NA_character_,
-                            cs.x != "" & cs.y == "" ~ paste0(cs.x),
-                            cs.x == "" & cs.y != "" ~ paste0(cs.y),
-                            cs.x != "" & cs.y != "" ~ paste0(cs.x," & ",cs.y)),
-               cs=as.factor(cs)
-               ) %>%
-        dplyr::select(snp,cs)
-      
-      xy
-    }
-    
-    #Extract minimal credible set labels
+    #Extract minimal credible set labels, using custom function
     snp_CS<- joinLabels(x=susie1_rep$sets[,c("snp","cs")],y=susie2_rep$sets[,c("snp","cs")],traits=traits)
   
       
@@ -1026,7 +891,7 @@ if(length(opt$GWASsumplots)>0){
     }
     
     height=50*length(ggsummaryplot)
-    ggsummaryfile <- ggsave(paste0(figdir,paste0(traits,collapse="_"),"_summary_plots.pdf"),
+    ggsummaryfile <- ggsave(file.path(figdir,paste0(paste0(traits,collapse="_"),"_summary_plots.pdf")),
                             jointPlots,device="pdf",units="mm",width=175,height=height)
     
     #Save the file locations only. Cat this to log file after colocalisation steps
@@ -1041,7 +906,7 @@ if(length(opt$GWASsumplots)>0){
 ######
 ### Proceed with colocalisation step
 ######
-sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+sink(file = logfile, append = T)
 cat("\n######\n### Colocalisation results\n######\n\n")
 sink()
 
@@ -1052,27 +917,34 @@ coloc_performed <- vector(mode="character",length=0L)
 if(any(msg1,msg2) || !all(susie1_rep$csFound,susie2_rep$csFound) || opt$runMode %in% c("doBoth","skipSusie")){  
   clc.abf<- coloc.abf(dataset1=sums1.region, dataset2=sums2.region)
 
-  sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+  sink(file = logfile, append = T)
   cat("Colocalisation will now be performed without passing first to SuSiE [see coloc::coloc.abf].\n")
   cat("Thus, the single causal variant assumption has not been relaxed.\n")
   cat("coloc.abf was performed with the following priors:\n")
   print(clc.abf$priors)
   cat("coloc.abf results summary:\n")
   print(clc.abf$summary)
+  cat("This summary is also returned in the file: results_summary_coloc_abf.csv\n")
   sink()
   
+  #Save the results summary in a table which can be readily combined with other outputs
+  Sum_abf<- t(enframe(c(traits,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc.abf$priors,clc.abf$summary)))
+  Sum_abf[1,1:length(traits)] <- paste0("TraitID_",1:length(traits))
+  
+  write.table(Sum_abf,file=file.path(tabdir,"results_summary_coloc_abf.csv"),sep = ",",row.names=FALSE,col.names = FALSE,quote = FALSE)
+  
   #Save PP.H4.abf summaries, with additional details to file
-  sets_outpath<- paste0(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv")
+  sets_outpath<- file.path(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv")
   
   #Store in plotdata option for potential plotting
-  plotdata <- sums1.region %>%
+  plotdata.abf <- sums1.region %>%
     as.data.frame() %>%
     dplyr::select(snp,pos) %>%
     right_join(clc.abf$results,by="snp")
   
-  write.table(plotdata,file=sets_outpath,sep = ",",row.names=FALSE)
+  write.table(plotdata.abf,file=sets_outpath,sep = ",",row.names=FALSE)
   
-  sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+  sink(file = logfile, append = T)
   cat("\nSNPwise posterior probabilities of being a shared variant for",paste(traits,collapse = " & "),"under coloc.abf are tabulated in:\n", basename(sets_outpath),"\n")
   sink()
   
@@ -1085,46 +957,29 @@ if(any(msg1,msg2) || !all(susie1_rep$csFound,susie2_rep$csFound) || opt$runMode 
 if(!any(msg1,msg2) && all(susie1_rep$csFound,susie2_rep$csFound) && opt$runMode %in% c("doBoth","trySusie")){
   clc<- coloc.susie(dataset1=susie1, dataset2=susie2) ###Run coloc based on susie outputs
 
-  sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+  sink(file = logfile, append = T)
   cat("------------------------------\n")
   cat("coloc.susie was performed with the following priors:\n")
   print(clc$priors)
   invisible(print(clc$summary)) #Call summary invisibly first to avoid triggering bug where no output is printed
   cat("coloc.susie results summary:\n")
   print(clc$summary)
+  cat("This summary is also returned in the file: results_summary_coloc_susie.csv.\n")
   sink()
   
-  credible_snps<- list()
-  for(i in 1:nrow(clc$summary)){
-    
-    #Identify indices to compare
-    Index_susie1 <- clc$summary$idx1[i]
-    Index_susie2 <- clc$summary$idx2[i]
-    
-    #Extract SNP names at indices 
-    snps1 <- names(susie1$sets$cs[[Index_susie1]])
-    snps2 <- names(susie2$sets$cs[[Index_susie2]])
-    ####Identify  how SNPs are distributed across the compared sets
-    topsnps <- list() 
-    topsnps$intersect <- intersect(snps1,snps2)
-    topsnps$sus1_only <- snps1[!(snps1 %in% topsnps$intersect)]
-    topsnps$sus2_only <- snps2[!(snps2 %in% topsnps$intersect)]
-  
-    #Label which credible sets are compared
-    cs_label <- paste(traits,c(Index_susie1,Index_susie2),sep=":")
-    
-    #Store in dataframe and assign interpretable values to each SNP
-    topsnps <- unlist(topsnps)
-    topsnps <- data.frame(cs_susie=gsub("[0-9]+$","", names(topsnps)),
-                          snp=unname(topsnps)) %>%
-      mutate(cs_susie=case_when(cs_susie=="intersect" ~ paste0(cs_label,collapse = " & "),
-                          cs_susie=="sus1_only" ~ cs_label[1],
-                          cs_susie=="sus2_only" ~ cs_label[2],
-                            TRUE ~ NA_character_),
-             cs_susie = as.factor(cs_susie))
-    
-    credible_snps[[i]]<- topsnps
+  #Save the results summary in a table which can be readily combined with other outputs
+  if(nrow(clc$summary)>1){
+    Sum_clcsusie<- c(traits,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc$priors) %>%
+      t() %>%
+      .[rep(1,nrow(clc$summary)),] %>%
+      cbind(.,clc$summary)
+  } else {
+    Sum_clcsusie<- c(traits,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc$priors,clc$summary) %>%
+      t()
   }
+  colnames(Sum_clcsusie)[1:length(traits)] <- paste0("TraitID_",1:length(traits))
+  
+  write.table(Sum_clcsusie,file=file.path(tabdir,"results_summary_coloc_susie.csv"),sep = ",",row.names=FALSE,col.names = TRUE,quote = FALSE)
   
   coloc_performed <- c(coloc_performed, "coloc.susie") #Flag which coloc analysis have been performed 
 }
@@ -1146,79 +1001,57 @@ toPlot<- list()
 
 if("coloc.abf" %in% coloc_performed){
   
-  
   #Colour likely snps under the assumption that h4 is true: " https://chr1swallace.github.io/coloc/articles/a03_enumeration.html
-  toPlot[[1]] <- plotdata %>%
+  toPlot[[1]] <- plotdata.abf %>%
     arrange(desc(SNP.PP.H4)) %>%
     mutate(cs_coloc=cumsum(SNP.PP.H4),                                             #Establish coloc.credible set
            thresh=if_else(row_number() <= label_limit, as.character(snp),""), #Label top snps
-           #thresh=if_else(cs <= 0.95, as.character(snp),""),                 #Colour those in the 95% CS
-           cs_coloc=if_else(cs_coloc <= 0.95, "within set","outside set"),
+           cs_coloc=case_when(row_number() == 1 ~ "within set",               #Top snp is always within set
+                              lag(cs_coloc) < 0.95 ~ "within set",             #lag checks previous record. If this value is <0.95 then snp is in set
+                              TRUE ~ "outside set"),
            cs_coloc= factor(cs_coloc,levels=c("within set","outside set")))
-           #cs= as.factor(cs))
 }
 
 if("coloc.susie" %in% coloc_performed){
+  
+  #More descriptive results tabulation
+  clc$results <- sums1.region %>%
+    as.data.frame() %>%
+    dplyr::select(snp,pos) %>%
+    full_join(snp_CS,by="snp") %>%
+    full_join(clc$results,by="snp") %>%
+    rename(cs_susie=cs)
+  
+  #Save PP.H4 summaries, with additional details, to file
+  sets_outpath<- file.path(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv")
+  write.table(clc$results,file=sets_outpath,sep = ",",row.names=FALSE)
+  
+  sink(file = logfile, append = T)
+  cat("\nSNPwise posterior probabilities of a shared variant for",paste(traits,collapse = " & "),"under coloc.susie are tabulated in:\n", basename(sets_outpath),"\n")
+  sink()
+  
+  #Prepare plotting for each 'row' of coloc.susie
   for(i in 1:nrow(clc$summary)){
     
     #Extract a given plotdata column
-    plotdata <- clc$results[,c(1,i+1),with=FALSE]
+    plotdata <- clc$results[,c(1:3,i+3)]
     #clc_col_index <- which(grepl("SNP.PP.H4",colnames(plotdata)))
     
     #Assign labels to top X% of SNPs, arranged by PP in column
     plotdata<- plotdata %>%
-      arrange(desc(.[[2]])) %>%
-      mutate(cs_coloc=cumsum(.[[2]]),                                                #Establish coloc.credible set
+      arrange(desc(.[[4]])) %>%
+      mutate(cs_coloc=cumsum(.[[4]]),                                                #Establish coloc.credible set
              thresh=if_else(row_number() <= label_limit, as.character(snp),""), #Label top snps
-             #cs_coloc=if_else(cs_coloc <= 0.95, "95% credible set",NA_character_),
-             #cs_coloc= as.factor(cs_coloc))
-             cs_coloc=if_else(cs_coloc <= 0.95, "within set","outside set"),
+             cs_coloc=case_when(row_number() == 1 ~ "within set",               #Top snp is always within set
+                                lag(cs_coloc) < 0.95 ~ "within set",             #lag checks previous record. If this value is <0.95 then snp is in set
+                                TRUE ~ "outside set"),
              cs_coloc= factor(cs_coloc,levels=c("within set","outside set")))
       
-    #Add additional fields to plot data, including SuSiE credible set allocations
-    plotdata <- sums1.region %>%
-      as.data.frame() %>%
-      dplyr::select(snp,pos) %>%
-      right_join(plotdata,by="snp") %>%
-      full_join(credible_snps[[i]],by="snp")
-    
   toPlot[[length(toPlot)+1]] <- plotdata
   }
   
-  #Construct results summary table, if there is more than one coloc row, then
-  if("coloc.abf" %in% coloc_performed){
-    toWrite<- toPlot[[2]]
-    start <- 3
-  } else {
-    toWrite<- toPlot[[1]]
-    start <- 2
-  }
-  if(length(toPlot)>(start-1)){
-    for(i in start:length(toPlot)){
-      
-      if(i==start){
-        toWrite_suffix<- c(".row1",".row2")
-      } else {
-        toWrite_suffix<- c("",paste0(".row",i))
-      }
-      toWrite <- toWrite %>%
-        full_join(toPlot[[i]], by=c("snp","position"),suffix=toWrite_suffix)
-      
-    }
-  }
-  
-  #Save PP.H4 summaries, with additional details, to file
-  sets_outpath<- paste0(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv")
-  
-  toWrite %>%
-    dplyr::select(-which(grepl("thresh",names(.)))) %>%
-    write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
-  
-  sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
-  cat("\nSNPwise posterior probabilities of a shared variant for",paste(traits,collapse = " & "),"under coloc.susie are tabulated in:\n", basename(sets_outpath),"\n")
-  sink()
 }
-sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+sink(file = logfile, append = T)
 cat("------------------------------\n")
 sink()
 
@@ -1243,10 +1076,6 @@ for(i in 1:length(toPlot)){
     colourMapping = "cs_susie"
     nameColourLegend<- "SuSiE fine-mapping\n(Trait: 95% credible set)"
     
-    # #Set shape mapping and legend
-    # shapeMapping = "cs_coloc"
-    # nameShapeLegend<- "Colocalisation\n(95% credible set\nassuming shared variant)" #Coloc analysis\ncredible set\nassuming a\nshared variant
-  
     #Determine filename for loop, first identify which cs are compared, then name accordingly
     if("coloc.abf" %in% coloc_performed){ 
       ind <- i-1
@@ -1257,7 +1086,7 @@ for(i in 1:length(toPlot)){
     cs_label <- paste(traits,cs_index,sep=":")
     cs_filenm <- paste(paste(traits,cs_index,sep="cs"),collapse="_")
     
-    filename<- paste0(figdir,"coloc.susie_result_all_snps_",cs_filenm,".pdf")
+    filename<- file.path(figdir,paste0("coloc.susie_result_all_snps_",cs_filenm,".pdf"))
     
   } else {
     #Identify the current analysis, for later logic checks
@@ -1267,24 +1096,15 @@ for(i in 1:length(toPlot)){
     colourMapping <- NULL
     nameColourLegend <- NULL
     
-    # # #Set colour mapping and legend
-    # colourMapping <- "cs_coloc"
-    # nameColourLegend <- "Colocalisation\n(95% credible set\nassuming shared variant)"
-    # 
-    # #Set shape mapping and legend
-    # shapeMapping <- NULL
-    # nameShapeLegend <- NULL
-    # 
     #Determine filename for loop
     cs_filenm <- ".abf"
-    filename<- paste0(figdir,"coloc.abf_result_all_snps.pdf")
+    filename<- file.path(figdir,"coloc.abf_result_all_snps.pdf")
     
   }
   
   #Set shape mapping and legend
   shapeMapping <- "cs_coloc"
   nameShapeLegend <- "Colocalisation\n(95% credible set\nassuming shared\nvariant)"
-
   
   #Build all snps plot, add labels for snps
   snp_PP <- ggSummaryplot(yaxis="SNP.PP",
@@ -1329,12 +1149,12 @@ for(i in 1:length(toPlot)){
     
 
     #Save details for nearby genes
-    sets_outpath<- paste0(tabdir,"nearby_genes_coloc",cs_filenm,".csv")
+    sets_outpath<- file.path(tabdir,paste0("nearby_genes_coloc",cs_filenm,".csv"))
     Genes_subset %>%
       dplyr::select(-c(start_window,end_window,midpoint)) %>%
       write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
     
-    sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+    sink(file = logfile, append = T)
     
     if(current=="susie"){
       cat("\nGenes located within a 10Kb window around the top 10% of snps from credible sets are tabulated in: ", basename(sets_outpath),"\n")
@@ -1343,27 +1163,96 @@ for(i in 1:length(toPlot)){
     }
     sink()
     
+    if(!is.null(opt$restrict_nearby_gene_plotting_source)){ #If subsetting to named gene sources
+      
+      geneSources <-strsplit(opt$restrict_nearby_gene_plotting_source,split=",")[[1]] #String split on comma to identify sources
+      sourceSubset<- which(Genes_subset$external_gene_source %in% geneSources)        #Find matching rows
+      
+      if(length(sourceSubset)>0){                                                     #If at least one gene remains, subset
+        Genes_subset<- Genes_subset[sourceSubset,]
+      } else {
+        sink(file = logfile, append = T)
+        cat("\nCould not subset nearby gene plotting by source since no genes remained after restricting to", paste0(geneSources,collapse=", "), "\n")
+        sink()
+      }
+    }
+    
     #Identify the x axis range based on max and minimum gene windows - plot only genes with a HGNC symbol
     #plot_rng <- c(min(Genes_subset$start_window[Genes_subset$external_gene_source=="HGNC Symbol"]),max(Genes_subset$end_window[Genes_subset$external_gene_source=="HGNC Symbol"]))
     plot_rng <- c(min(c(min_bp,Genes_subset$start_window)),max(c(max_bp,Genes_subset$end_window)))
     
-    #Plot nearby genes using a unique plotting approach
+    
+    #Rescale x-axis into MBs or KBs
+    if((plot_rng[2]-plot_rng[1])>1000000){
+      xscale <- 1000000
+      xscale_magnitude <- " [Mb]"
+    } else if ((plot_rng[2]-plot_rng[1])>1000) {
+      xscale <- 1000
+      xscale_magnitude <- " [Kb]"
+    } else {
+      xscale <- 1
+      xscale_magnitude <- ""
+    }
+
+    if(is.null(opt$gene_tracks) || (nrow(Genes_subset)<opt$gene_tracks && !is.null(opt$gene_tracks))){
+      #Plot nearby genes using a unique plotting approach, scaling axes accordingly
+      gene_near <- Genes_subset %>%
+        ggplot(.,aes(x=midpoint, y=external_gene_name))+
+        geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0.2)+
+        theme_bw()+
+        theme(axis.text.y = element_text(face="italic"))
+      
+    } else {
+    ## USE A REVISED PLOTTING APPROACH - permits multiple genes on one y-axis level, buffered by genomic position
+    
+    genespacing<- (plot_rng[2]-plot_rng[1])/5
+      
+    Genes_subset$track <- 1           #Assign all genes to track 1 initially
+    for(t in 2:nrow(Genes_subset)){   #For each gene, tracks upwards to avoid overlap with those in current track
+      prior <- Genes_subset[1:(t-1),]
+      
+      r=1                             #Start from track number 1, and while overlapping, increase tracks until adequate plotting space is found
+      inTrack<- which(prior$track==r) #identify rows in current track
+      while(length(inTrack)>0){ #While in an existing track
+        if(Genes_subset$start_position[t]>(max(prior$end_position[inTrack])+genespacing)){ #If the start position is more than 100Kb apart from the previous gene in track, then assign gene to track
+          Genes_subset$track[t] <- r
+          break #break loop
+          
+        } else { #increase track number
+          r <- r+1
+          inTrack<- which(prior$track==r) #identify rows in current track
+          if(length(inTrack)==0){ #If this is a new track, assign final track number and loop will break
+            Genes_subset$track[t] <- r
+          }
+        }
+      }
+    } #End tracking loop
+    
+    #Convert to factor in order to display lower tracks higher
+    tracklevels<- rev(sort(unique(Genes_subset$track)))
+    Genes_subset$track <- factor(Genes_subset$track,levels=tracklevels) 
+    
+    #Plot nearby genes using a unique plotting approach, scaling axes accordingly
     gene_near <- Genes_subset %>%
-      filter(external_gene_source=="HGNC Symbol") %>% #only keep HGNC Symbols
-      ggplot(.,aes(x=midpoint, y=external_gene_name))+
-      geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0.2)+
-      #geom_text_repel(aes(label=external_gene_name),fontface="italic",direction="y")+
-      xlim(plot_rng)+
+      ggplot(.,aes(x=midpoint, y=track))+
+      geom_text_repel(aes(label=external_gene_name),fontface="italic",direction="y",size=3)+
       theme_bw()+
-      labs(x=paste0("GRCh",opt$genomeAlignment," genomic position (Chr", reg_range["chr"],":",plot_rng[1],"-",plot_rng[2],")"),
-           y="Nearby genes")+
-      theme(axis.text.y = element_text(face="italic"))
+      theme(axis.text.y = element_blank(),
+            axis.ticks.y = element_blank())
+    }
+    
+    #Add universal plot layers
+    gene_near <- gene_near + 
+      geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0.1)+
+      scale_x_continuous(limits = plot_rng, labels=scales::label_number(scale = 1 / xscale,accuracy = 0.01))+ #Scale axis magnitude dynamically
+      labs(x=paste0("GRCh",opt$genomeAlignment," genomic position (Chr", reg_range["chr"],":",plot_rng[1],"-",plot_rng[2],")",xscale_magnitude),
+           y="Nearby genes")
 
     
     #Narrow the snp plot xlim to match gene_near
     suppressMessages({ #Suppress warning about 'double-setting' xlim
       snp_PP_range <- snp_PP +
-        xlim(plot_rng)
+        scale_x_continuous(limits = plot_rng, labels=scales::label_number(scale = 1 / xscale,accuracy = 0.01)) #Scale axis magnitude dynamically
     })
     
     #If susie has been plotted, colouring is used to label Susie credible sets, adjust legend to include only snps in the new plot range
@@ -1381,24 +1270,30 @@ for(i in 1:length(toPlot)){
     }
     
     #Scale plot proportions according to number of genes plotted, but cap at 1, indicating equal proportions
-    propor <- 0.05*length(gene_near$data$external_gene_name)
+    
+    #To accommodate labelling when using track-based plotting, give extra buffer room per track
+    if(is.null(opt$gene_tracks) || (nrow(Genes_subset)<opt$gene_tracks && !is.null(opt$gene_tracks)) ){
+      propor <- 0.05*length(gene_near$data$external_gene_name)
+    } else {
+      propor <- 0.2*length(levels(gene_near$data$track))
+    }
     if(propor>1){propor <- 1}
     
     g_arr <- egg_ggarr_wlegend(list(snp_PP_range,gene_near),position = "right",ncol=1,heights=c(1,propor))
     
     #If plotting the result of coloc.susie analysis, add extra info relevant to credible set assignments 
     if(current=="susie"){
-      filename<- paste0(figdir,"coloc_susie_likely_snps_with_genes",cs_filenm,".pdf")
+      filename<- file.path(figdir,paste0("coloc_susie_likely_snps_with_genes",cs_filenm,".pdf"))
       
     } else {
-      filename<- paste0(figdir,"coloc_abf_likely_snps_with_genes.pdf")
+      filename<- file.path(figdir,"coloc_abf_likely_snps_with_genes.pdf")
     }
     
     ggsave(filename,g_arr,device="pdf",units="mm",width=150,height=175)
     
   } else { #Conditional statement for when no nearby genes are found
     
-    sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+    sink(file = logfile, append = T)
     
     if(("coloc.susie" %in% coloc_performed && !"coloc.abf" %in% coloc_performed) ||
        ("coloc.susie" %in% coloc_performed && "coloc.abf" %in% coloc_performed && i!=1)
@@ -1413,14 +1308,14 @@ for(i in 1:length(toPlot)){
   
 } 
 
-sink(file = paste(opt$out,'colocalisation.log',sep=''), append = T)
+sink(file = logfile, append = T)
 cat("------------------------------\n")
 sink()
 
 
 
 #Write to log which GWAS summary plots have been written
-sink(file = paste0(opt$out,'colocalisation.log'), append = T)
+sink(file = logfile, append = T)
 cat("Selected graphical comparison between summary statistics has been written to the file(s):\n",
     paste0(ggsummaryfile,sep="\n"),"\n")
 sink()

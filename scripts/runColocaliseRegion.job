@@ -4,10 +4,6 @@
 #SBATCH --time=0-1:00
 #SBATCH --tasks=1 
 
-#Load required modules
-module load r
-module load plink
-
 #####
 # INPUT files
 #####
@@ -51,10 +47,13 @@ Rscript $scriptpath \
 		--runMode $runMode \
 		--GWASsumplots $sumplots \
 		--GWASsumplots_onefile $sumplots_onefile \
+		--gene_tracks 40 \
+		--restrict_nearby_gene_plotting_source "HGNC Symbol" \
 		--force_matrix FALSE \
 		--out $outpath \
 		--traits "${p1},${p2}" \
-		--GWASconfig ${GWASinfo}
+		--GWASconfig ${GWASinfo} \
+		--helperFunsDir "$(dirname ${scriptpath})/helper_functions"
 
 
 

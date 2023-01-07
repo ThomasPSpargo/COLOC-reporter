@@ -1,12 +1,6 @@
 #!/bin/bash
 # This script submits batch jobs based on input configurations and those of "${MAIN}/scripts/runColocaliseRegion.job". Batch jobs are submitted for each analysis indicated in the file directed to within the '$phenos' variable.
 
-
-
-#For KCL CREATE HPC Platform: Load required modules - adapt as required
-module load r
-module load plink
-
 #####
 # Input settings
 #####
