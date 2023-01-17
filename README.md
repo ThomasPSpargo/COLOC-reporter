@@ -89,7 +89,7 @@ __GWAS_samples.txt__
 Information about the input configurations for traits to analyse should be detailed in the `./scripts/GWAS_samples.txt` file. An example this file is as follows:
 
 ID|type|prop|traitSD|pcolumn|statcol|Ncol|chromosome|positions|error|snpcol|freq|traitLabel|FILEPATH
----|---|---|---|---|---|---|---|---|---|---|---|---
+---|---|---|---|---|---|---|---|---|---|---|---|---|---
 ALS|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|FREQ|Amyotrophic lateral sclerosis|/path/to/sumstats/file.extension
 AZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Alzheimer's Disease|/path/to/sumstats/file.extension
 FTD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Frontotemporal dementia|/path/to/sumstats/file.extension
