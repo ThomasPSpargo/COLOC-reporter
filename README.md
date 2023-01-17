@@ -1,8 +1,5 @@
 ## COLOC-reporter
 ___This repository is maintained by Thomas Spargo (thomas.spargo@kcl.ac.uk) - please reach out with any questions___
-
-_Last update 07/01/2023_
-
 ___
 
 ### Performing colocalisation analysis
@@ -31,7 +28,7 @@ cd COLOC-reporter
 
 __Install dependencies__
 
-The most straightforward way to ensure all the necessary dependencies are installed is to run analyses within the provided conda environment.
+The most straightforward way to ensure all the necessary dependencies are installed is to run analyses within the provided [conda](https://docs.conda.io/en/latest/miniconda.html) environment.
 
 The steps for this are as follows:
 
@@ -91,26 +88,27 @@ __GWAS_samples.txt__
 
 Information about the input configurations for traits to analyse should be detailed in the `./scripts/GWAS_samples.txt` file. An example this file is as follows:
 
-ID|type|prop|pcolumn|statcol|Ncol|chromosome|positions|error|snpcol|freq|traitLabel|FILEPATH
+ID|type|prop|traitSD|pcolumn|statcol|Ncol|chromosome|positions|error|snpcol|freq|traitLabel|FILEPATH
 ---|---|---|---|---|---|---|---|---|---|---|---|---
-ALS|cc|0.5|P|BETA|N|CHR|BP|SE|SNP|FREQ|Amyotrophic lateral sclerosis|/path/to/sumstats/file.extension
-AZ|cc|0.5|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Alzheimer's Disease|/path/to/sumstats/file.extension
-FTD|cc|0.5|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Frontotemporal dementia|/path/to/sumstats/file.extension
-PD|cc|0.5|P|BETA|N|CHR|BP|SE|SNP|FREQ|Parkinson's Disease|/path/to/sumstats/file.extension
-SZ|cc|0.5|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Schizophrenia|/path/to/sumstats/file.extension
+ALS|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|FREQ|Amyotrophic lateral sclerosis|/path/to/sumstats/file.extension
+AZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Alzheimer's Disease|/path/to/sumstats/file.extension
+FTD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Frontotemporal dementia|/path/to/sumstats/file.extension
+PD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|FREQ|Parkinson's Disease|/path/to/sumstats/file.extension
+SZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Schizophrenia|/path/to/sumstats/file.extension
 
 The column headers used in the template should be included. Each column indicates the following:
 - ID: Character string indicating identifying string set in the `coloc.phenopairs.txt` input file (see above)
 - type: Character string, either 'quant' or 'cc' indicating respectively whether the trait is quantitative or binary (case control)
-- prop: For trait where `type=cc`, Indicate proportion of data from cases; ignored if type is quant
+- prop: For trait where `type=cc`, Indicate proportion of data from cases; ignored if type is quant.
+- traitSD: For trait where `type=quant`, optionally indicate standard deviation of trait in the population; ignored if type is cc, and should be set to `NA` if unknown. This will be imputed by coloc for quantitative traits when unknown (see: R function `coloc::sdY.est`).
 - pcolumn: Column name for p-values
 - statcol: Column name for test statistic, expects column referring to the beta coefficients, if odds ratios given, column must be called 'OR', and these will be converted to the betas. 
-- Ncol: Column name detailing sample size per snp. For type=cc trait, effective sample size is recommended, in which case `prop` option should be `0.5`
+- Ncol: Column name detailing sample size per snp. For `type=cc` trait, effective sample size is recommended, in which case `prop` option should be `0.5`
 - chromosome: Column name for chromosome
 - positions: Column name for genomic position
 - error: Column name for test statistic standard error
 - snpcol: Column name for SNP ids, rsID is expected
-- freq: Column name for allele frequency
+- freq: Column name for allele frequency. Any SNPs with `freq>0.5` will be adjusted (`1-freq`) to obtain minor allele frequency (MAF).
 - traitLabel: A long name for the trait, to be used for plotting
 - FILEPATH: Path to summary statistics file (`.gz` compressed files can be used)
 
@@ -145,7 +143,7 @@ If colocalisation analysis without finemapping is requested, the results of anal
 
 If colocalisation analysis with SuSiE finemapping is requested, SuSiE finemapping results will be returned for each of traits analysed. The results summary of colocalisation analysis with `coloc.susie` will be returned if at least one credible set can be identified per trait. If the finemapping step fails for one or both traits, colocalisation analysis will default to `coloc.abf`, skipping finemapping.
 
-The results of both `coloc.abf` and `coloc.susie` will be returned analysis with both approaches is requested (the default), and if finemapping is successful.
+The results of both `coloc.abf` and `coloc.susie` will be returned analysis with both approaches are requested (the default), and if finemapping is successful.
 
 __Concatentating across multiple analyses__
 

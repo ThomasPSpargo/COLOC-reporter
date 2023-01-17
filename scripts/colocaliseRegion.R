@@ -16,18 +16,12 @@ option_list = list(
               help="Path to PLINK executable (syntax written for PLINK 1.9). By default, has the value 'plink'"),
   make_option("--traits", action="store", default=NULL, type='character',
               help="Comma separated list of IDs for traits to analyse (e.g. 'P1,P2'), as relevant to the summary statistics provided in --sumstat1 and --sumstat2 options."),
-  make_option("--traitLabel1", action="store", default=NULL, type='character',
-              help="Character string giving a 'long' name for the first trait. To be used in plotting. If NULL, will default to the trait ID."),
-  make_option("--traitLabel2", action="store", default=NULL, type='character',
-              help="Character string giving a 'long' name for the second trait. To be used in plotting.If NULL, will default to the trait ID. This option is not affected by --match_sum1_opts."),
   make_option("--set_locus", action="store", default=NA, type='character',
               help='Specify target locus to test, either as a number referring to a locus from --LAVAfile, or as a comma separated list of the format "chromosome,start_position,end_position" (e.g. 17,43460501,44865832).'),
   make_option("--LDreference", action="store", default=NA, type='character',
               help="Path to, and prefix for, per-chromosome PLINK binary files used to compute LD matrix for SNPs in region. This input is used by SuSiE. Expected format of <prefix>i.bim, where i is the chromosome number"),
   make_option("--GWASconfig", action="store", default=NULL, type='character',
               help="Path to file specifying configuration of GWAS sumstats. Configuration will be determined by identifying rows whose IDs match the --traits option."),
-  make_option("--match_sum1_opts", action="store", default=FALSE, type='logical',
-              help="Specify whether duplicated options in summary stats 2 match those of sumstats 1. If TRUE they will be set automatically, unless option is specifically given [logical, defaults to FALSE]"),
   make_option("--runMode", action="store", default="trySusie", type='character',
               help="Character string, any of 'trySusie', 'skipSusie', 'doBoth'.\nIf 'doBoth', both coloc.abf and coloc.susie will attempt to run.\nIf 'trySusie' coloc.susie will be used if SuSiE finemapping identifies at least 1 credible set in each trait and coloc.abf is returned if the SuSiE finemapping step fails.\nIf 'skipSusie', only coloc.abf will be applied, and processes necessary for coloc.susie are skipped (e.g. no need to call to plink and generate LD matrix); the LD reference will however still still used for SNP alignment."),
   make_option("--force_matrix", action="store", default=FALSE, type='logical',
@@ -47,57 +41,7 @@ option_list = list(
   make_option("--restrict_nearby_gene_plotting_source", action="store", default=NULL, type='character',
               help="Comma delimited character string indicating sources from which nearby genes included in plots are retrieved. Check output tables 'external_gene_source' column for options. Included as an option to reduce overplotting of obscure gene symbols. If NULL, all sources will plot"),
   make_option("--helperFunsDir", action="store", default=NULL, type='character',
-              help="Filepath to directory containing helper functions used within the script"),
-  
-  
-  
-  #Options For summary statistics 1 (will also be applied to summary statistics 2 if --match_sum1_cols TRUE and if options are not otherwise specified)
-  make_option("--sumstat1", action="store", default=NA, type='character',
-              help="Path to summary statistics for primary file"),
-  make_option("--type1", action="store", default=NA, type='character',
-              help="Indicate whether phenotype is 'quant' or 'cc' (case control)"),
-  make_option("--prop1", action="store", default=0.5, type='numeric',
-              help="For cc trait, Indicate proportion of data is from cases"),
-  make_option("--pcolumn1", action="store", default=NA, type='character',
-              help="Column name for p-values"),
-  make_option("--statcol1", action="store", default=NA, type='character',
-              help="Column name for test statistic, expects column referring to the beta coefficients, if odds ratios given, column must be called 'OR' "),
-  make_option("--Ncol1", action="store", default=NA, type='character',
-              help="Column name for each snp sample size"),
-  make_option("--chromosome1", action="store", default=NA, type='character',
-              help="Column name for chromosome"),
-  make_option("--positions1", action="store", default=NA, type='character',
-              help="Column name for genomic position"),
-  make_option("--error1", action="store", default=NA, type='character',
-              help="Column name for test statistic error"),
-  make_option("--snpcol1", action="store", default=NA, type='character',
-              help="Column name for SNP ids"),
-  make_option("--freq1", action="store", default="REF.FREQ", type='character',
-              help="Column name with allele frequency information"),
-  
-  #Duplicated options for summary statistics 2
-  make_option("--sumstat2", action="store", default=NA, type='character',
-              help="Path to summary statistics for primary file"),
-  make_option("--type2", action="store", default=NA, type='character',
-              help="Indicate whether phenotype is 'quant' or 'cc' (case control)"),
-  make_option("--prop2", action="store", default=0.5, type='numeric',
-              help="For cc trait, Indicate proportion of data is from cases"),
-  make_option("--pcolumn2", action="store", default=NA, type='character',
-              help="Column name for p-values"),
-  make_option("--statcol2", action="store", default=NA, type='character',
-              help="Column name for test statistic, expects column referring to the beta coefficients, if odds ratios given, column must be called 'OR' "),
-  make_option("--Ncol2", action="store", default=NA, type='character',
-              help="Column name for each snp sample size"),
-  make_option("--chromosome2", action="store", default=NA, type='character',
-              help="Column name for chromosome"),
-  make_option("--positions2", action="store", default=NA, type='character',
-              help="Column name for genomic position"),
-  make_option("--error2", action="store", default=NA, type='character',
-              help="Column name for test statistic error"),
-  make_option("--snpcol2", action="store", default=NA, type='character',
-              help="Column name for SNP ids"),
-  make_option("--freq2", action="store", default="REF.FREQ", type='character',
-              help="Column name with allele frequency information")
+              help="Filepath to directory containing helper functions used within the script")
 )
 
 opt = parse_args(OptionParser(option_list=option_list))
@@ -118,7 +62,6 @@ suppressPackageStartupMessages({
   library(egg)     #arranging summary plot
 })
 
-
 test <- FALSE # test <- TRUE
 if(test==TRUE){
   #####
@@ -128,127 +71,37 @@ if(test==TRUE){
   #Not needed
   #opt$LAVAfile <- "/scratch/users/k1802739/LAVA/results/PD.SZ.bivar"
   
-  # # #TESTING V1
-  opt$set_locus <- "17,43460501,44865832"
-  opt$sumstat1 <- "./PD.sumstats.gz"
-  opt$sumstat2 <- "./SZ.sumstats.gz"
-  opt$freq2 <- "REF.FREQ"
-  opt$out <- "./test_v2_PD.SZ.chr17"
-  opt$traits <- c("PD,SZ")
-  opt$traitLabel1 <- "Parkinson's Disease"
-  opt$traitLabel2 <- "Schizophrenia"
-  
-  #TESTING V2
-  # opt$set_locus <- "9,27366480,28067454"
-  # opt$sumstat1 <- "./ALS.sumstats.txt"
-  # opt$sumstat2 <- "./SZ.sumstats.txt"
-  # opt$freq2 <- "REF.FREQ"
-  # opt$out <- "./testing_ALS.SZ.chr9"
-  #opt$traits <- c("ALS,SZ")
-  # opt$traitLabel1 <- "Amyotrophic lateral sclerosis"
-  # opt$traitLabel2 <- "Schizophrenia"
-  
   # # #TESTING V3
-  # opt$set_locus <- "16,86058598,86748867"
-  # opt$sumstat1 <- "./ALS.sumstats.txt"
-  # opt$sumstat2 <- "./PD.sumstats.txt"
-  # opt$freq2 <- "FREQ"
-  # opt$out <- "./testing_ALS.PD.chr16"
-  #opt$traits <- c("ALS,PD")
-  # opt$traitLabel1 <- "Amyotrophic lateral sclerosis"
-  # opt$traitLabel2 <- "Parkinson's Disease"
+  opt$set_locus <- "17,43460501,44865832"
+  opt$GWASconfig <- "./GWAS_samples_testing.txt"
+  opt$out <- "./tidy_processingTEST_PD.SZ.chr17"
+  opt$traits <- "PD,SZ"#,ALS")
   
   opt$LDreference <- './EUR_phase3_chr'
   opt$runMode <- 'doBoth'
   opt$force_matrix <- FALSE
-  opt$type1 <- "cc"
-  opt$prop1 <- 0.5
-  opt$pcolumn1 <- "P"
-  opt$statcol1 <- "BETA"
-  opt$Ncol1 <- "N"
-  opt$chromosome1 <- "CHR"
-  opt$positions1 <- "BP"
-  opt$error1 <- "SE"
-  opt$snpcol1 <- "SNP"
-  opt$freq1 <- "FREQ"
-  opt$match_sum1_opts <- TRUE
+  
   opt$gene_tracks <- 40
   opt$restrict_nearby_gene_plotting_source <- "HGNC Symbol"
+  opt$genomeAlignment <- 37
+  
   opt$helperFunsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
   
-  opt$genomeAlignment <- 37
-  opt$GWASsumplots <- c("PIP","p","beta")
+  opt$GWASsumplots <- c("PIP,p,beta")
   opt$GWASsumplots_onefile <- FALSE
   opt$GWASsumplots_incfinemapping <- TRUE
   
-  
-  #Assign default options for testing, except opt$freq2, which has unique name across sumstats
-  opt$type2 <- opt$pcolumn2 <- opt$statcol2 <- opt$Ncol2 <- opt$chromosome2 <- opt$positions2 <- opt$error2 <- opt$snpcol2 <- NA
-  opt$prop2 <- 0.5
 }
 
 #Extract names of traits compared, first dropping file path, and then any prefixes indicated by a preceding underscore
 traits <- strsplit(opt$traits,",")[[1]][1:2]
 
-if(!is.null(opt$GWASconfig)){
-  
-  #Read in the configuration options
-  GWASconfig<- fread(opt$GWASconfig)
-  
-  #Identify the rows which correspond to trait ID1 and ID2
-  Config.index <- c(which(GWASconfig$ID %in% traits[1]),
-                    which(GWASconfig$ID %in% traits[2])
-                    )
-  
-  opt$type1 <- GWASconfig$type[Config.index[1]]
-  opt$prop1 <- GWASconfig$prop[Config.index[1]]
-  opt$pcolumn1 <- GWASconfig$pcolumn[Config.index[1]]
-  opt$statcol1 <- GWASconfig$statcol[Config.index[1]]
-  opt$Ncol1 <- GWASconfig$Ncol[Config.index[1]]
-  opt$chromosome1 <- GWASconfig$chromosome[Config.index[1]]
-  opt$positions1 <- GWASconfig$positions[Config.index[1]]
-  opt$error1 <- GWASconfig$error[Config.index[1]]
-  opt$snpcol1 <- GWASconfig$snpcol[Config.index[1]]
-  opt$freq1 <- GWASconfig$freq[Config.index[1]]
-  opt$traitLabel1 <- GWASconfig$traitLabel[Config.index[1]]
-  opt$sumstat1 <- GWASconfig$FILEPATH[Config.index[1]]
-  
-  opt$type2 <- GWASconfig$type[Config.index[2]]
-  opt$prop2 <- GWASconfig$prop[Config.index[2]]
-  opt$pcolumn2 <- GWASconfig$pcolumn[Config.index[2]]
-  opt$statcol2 <- GWASconfig$statcol[Config.index[2]]
-  opt$Ncol2 <- GWASconfig$Ncol[Config.index[2]]
-  opt$chromosome2 <- GWASconfig$chromosome[Config.index[2]]
-  opt$positions2 <- GWASconfig$positions[Config.index[2]]
-  opt$error2 <- GWASconfig$error[Config.index[2]]
-  opt$snpcol2 <- GWASconfig$snpcol[Config.index[2]]
-  opt$freq2 <- GWASconfig$freq[Config.index[2]]
-  opt$traitLabel2 <- GWASconfig$traitLabel[Config.index[2]]
-  opt$sumstat2 <- GWASconfig$FILEPATH[Config.index[2]]
-  
-  Config_msg <- paste0("Summary statistic configuration options set according to the specification of --GWASconfig for trait IDs 1: ", traits[1], " and 2: ",traits[2],".\n")
-} else {
-  Config_msg <- ""
-}
+#Read in the configuration options
+GWASconfig<- fread(opt$GWASconfig)
+Config_msg <- paste0("Summary statistic configuration options set according to the specification of --GWASconfig for trait IDs: ", paste0(1:length(traits)," = ",traits,collapse = ", "),".\n",sep='')
 
-#If sumstat 2 options should match sumstat 1 options (indicated by --match_sum1_cols TRUE) match options which are not otherwise explicitly named
-if(isTRUE(opt$match_sum1_opts) && is.null(opt$GWASconfig)){
-  if(is.na(opt$pcolumn2)){opt$pcolumn2 <- opt$pcolumn1}
-  if(is.na(opt$statcol2)){opt$statcol2 <- opt$statcol1}
-  if(is.na(opt$Ncol2)){opt$Ncol2 <- opt$Ncol1}
-  if(is.na(opt$chromosome2)){opt$chromosome2 <- opt$chromosome1}
-  if(is.na(opt$positions2)){opt$positions2 <- opt$positions1}
-  if(is.na(opt$error2)){opt$error2 <- opt$error1}
-  if(is.na(opt$snpcol2)){opt$snpcol2 <- opt$snpcol1}
-  if(is.na(opt$freq2)){opt$freq2 <- opt$freq1}
-  
-  if(is.na(opt$type2)){opt$type2 <- opt$type1}
-  if(opt$prop2==0.5){opt$prop2 <- opt$prop1}
-}
-
-#Assign names for use as labelling with the traits
-names(traits) <- c(opt$traitLabel1, opt$traitLabel2) 
-
+#Assign names to traits
+names(traits) <- GWASconfig[traits,on="ID"]$traitLabel
 
 opt$out <- paste0(opt$out,"_coloc")
 if(!dir.exists(opt$out)){dir.create(opt$out,recursive = TRUE)}
@@ -283,7 +136,7 @@ cat(
 Analysis started at',as.character(Sys.time()),'\n',Config_msg,'Options are:\n')
 print(opt)
 
-cat("\n######\n### Setup \n######\n\n")
+cat("\n######\n### Setup\n######\n\n")
 
 cat("All outputs will be returned in the directory: ", opt$out,"\n")
 cat("All figures are returned in the subdirectory: ",basename(figdir),"\n")
@@ -310,81 +163,65 @@ if(length(opt$GWASsumplots)>0){
     opt$GWASsumplots <- opt$GWASsumplots[-which(checksumplots)] #Drop the unrecognised strings
   }
 }
-       
-       
+
   
-
 ########
-##### Import first dataset
+##### Import datasets
 ########
-#Import first dataset
-sums1 <- tibble(fread(opt$sumstat1))
+#Import datasets and convert to tibbles
+sums <- lapply(GWASconfig[traits,on="ID"]$FILEPATH,function(x){tibble(fread(x))})
+names(sums) <- traits
 
-#Check for column name options match the dataset, warn if not
-colcheck <-  which(!(
-  c(opt$pcolumn1,opt$statcol1,opt$Ncol1,opt$chromosome1,opt$positions1,opt$error1,opt$snpcol1,opt$freq1)
-  %in% colnames(sums1)
-))
-if(length(colcheck)>0){
-  warning("The column names expected for the 1st set of summary statistics based on options set were not all detected when reading in the file. Please check the option(s) specified.")
+#Loop across traits to test whether columns identified match those indicated in the config file
+colcheck<- mapply(function(x,trait){
+  #Check for column name options match the dataset, warn if not
+  colcheck <-  which(!(
+    c(GWASconfig[trait,on="ID"]$pcolumn,
+      GWASconfig[trait,on="ID"]$statcol,
+      GWASconfig[trait,on="ID"]$Ncol,
+      GWASconfig[trait,on="ID"]$chromosome,
+      GWASconfig[trait,on="ID"]$positions,
+      GWASconfig[trait,on="ID"]$error,
+      GWASconfig[trait,on="ID"]$snpcol,
+      GWASconfig[trait,on="ID"]$freq)
+    %in% colnames(x)
+  ))
+  return(colcheck)
+},x=sums,trait=traits)
+
+colProblem<- sapply(colcheck,length)>0
+if(any(colProblem)){
+  sink(file = logfile, append = T)
+  warning("The column names expected based on the --GWASconfig options set for trait(s): ", paste0(names(colProblem)[colProblem],collapse=", "), " do not match columns detected in the file. Please check the option(s) specified.")
+  sink()
 }
 
-#Unless specified to be an odds ratio, rename as beta
-if(opt$statcol1=="OR"){
-  sums1$beta <- log(sums1$OR)
-  sums1$OR <- NULL
-} else {
-  colnames(sums1)[colnames(sums1)==opt$statcol1] <- "beta"
-}
-
-#Standardise other column names
-names(sums1)[names(sums1)==opt$pcolumn1] <- "pvalues"
-names(sums1)[names(sums1)==opt$chromosome1] <- "chr"
-names(sums1)[names(sums1)==opt$positions1] <- "pos"
-names(sums1)[names(sums1)==opt$error1] <- "SE"
-names(sums1)[names(sums1)==opt$snpcol1] <- "snp"
-names(sums1)[names(sums1)==opt$freq1] <- "MAF"
-
-
-########
-##### Import second dataset
-########
-#Parameters for the second dataset Copy from 1
-
-#...
-#Import data
-sums2 <- tibble(fread(opt$sumstat2))
-
-#Check for column name options match the dataset
-colcheck <-  which(!(
-  c(opt$pcolumn2,opt$statcol2,opt$Ncol2,opt$chromosome2,opt$positions2,opt$error2,opt$snpcol2,opt$freq2)
-  %in% colnames(sums2)
-))
-if(length(colcheck)>0){
-  warning("The column names expected for the 1st set of summary statistics based on options set were not all detected when reading in the file. Please check the option(s) specified.\n
-          Note that these names may have been automatically assigned based on values for summary statistics 1 if --match_sum1_opts is set as TRUE")
-}
-
-if(opt$statcol2=="OR"){
-  sums2$beta <- log(sums2$OR)
-  sums2$OR <- NULL
-} else {
-  colnames(sums2)[colnames(sums2)==opt$statcol2] <- "beta"
-}
-
-
-#Standardise the names based on input options
-names(sums2)[names(sums2)==opt$pcolumn2] <- "pvalues"
-names(sums2)[names(sums2)==opt$chromosome2] <- "chr"
-names(sums2)[names(sums2)==opt$positions2] <- "pos"
-names(sums2)[names(sums2)==opt$error2] <- "SE"
-names(sums2)[names(sums2)==opt$snpcol2] <- "snp"
-names(sums2)[names(sums2)==opt$freq2] <- "MAF"
-
+#Adjust column names into COLOC format.
+#mapply is set to SIMPLIFY=FALSE to ensure a list result
+sums<- mapply(function(x,trait){
+  #Unless specified to be an odds ratio, rename as beta
+  if(GWASconfig[trait,on="ID"]$statcol=="OR"){
+    x$beta <- log(x$OR)
+    sums1$OR <- NULL
+  } else {
+    names(x)[names(x)==GWASconfig[trait,on="ID"]$statcol] <- "beta"
+  }
+  
+  #Rename the other columns  
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$pcolumn] <- "pvalues"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$Ncol] <- "N"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$chromosome] <- "chr"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$positions] <- "pos"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$error] <- "SE"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$snpcol] <- "snp"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$freq] <- "MAF"
+    
+  return(x)
+},x=sums,trait=traits,SIMPLIFY=FALSE)
 
 
 ########
-#### Filter dataset into interest region
+#### Identify region for analysis
 ########
 if(!is.na(opt$set_locus)){
   
@@ -428,68 +265,12 @@ sink(file = logfile, append = T)
 cat(paste0("Colocalisation analysis will be performed for the region: ", target_region," \n"))
 sink()
 
-
 ######
-# Harmonise summary statistics
+# Harmonise summary statistics with reference
 ######
 
-# Read in reference SNP data to match alleles 
-bim<-fread(paste0(opt$LDreference,reg_range["chr"],'.bim'))
-
-#Drop sumstats 1 to snps in the chromosome:position range and present in the LD reference data
-#Mutate to calculate the variance of the beta from standard error and N
-sums1.region <- sums1 %>%
-  filter(chr==reg_range["chr"],
-         pos>=reg_range["start"],
-         pos<=reg_range["stop"],
-         snp %in% bim[["V2"]]
-  ) %>%
-  arrange(match(snp, bim[["V2"]]))
-
-sink(file = logfile, append = T)
-cat("Number of SNPs from sumstat 1 in tested region and LD reference:", nrow(sums1.region),"\n")
-sink()
-
-# #Repeat filtering for sumstats 2
-sums2.region <- sums2 %>%
-  filter(chr==reg_range["chr"],
-         pos>=reg_range["start"],
-         pos<=reg_range["stop"],
-         snp %in% bim[["V2"]]
-  ) %>%
-  arrange(match(snp, bim[["V2"]]))
-  
-
-sink(file = logfile, append = T)
-cat("Number of SNPs from sumstat 2 in tested region and LD reference:", nrow(sums2.region),"\n")
-sink()
-
-#Intersect the two snp lists
-snplist <- intersect(sums1.region$snp, sums2.region$snp)
-
-sink(file = logfile, append = T)
-#Print some information to console
-cat(paste0("N SNPs overlapping for both traits: ", length(snplist),"\n"))
-sink()
-
-#Intersect the overlapping SNPSs, and compute varbeta and position evidence
-sums1.region <- sums1.region %>%
-  filter(snp %in% snplist) %>%
-  mutate(varbeta = SE^2,
-         position = row_number())
-
-sums2.region <- sums2.region %>%
-  filter(snp %in% snplist) %>%
-  mutate(varbeta = SE^2,
-         position = row_number())
-
-
-
-
-
-
-# Flip sumstat direction to match alleles across gwas and reference,
-# also reverse allele frequency to refer to new effect allele
+# Define function to flip sumstat direction to match alleles across gwas and reference,
+# Allele frequency is not reversed since coloc utilises MAF.
 alignSS <- function(ss,bim){
   ss_bim_match<-merge(ss, bim, by.x=c('snp','A1','A2'), by.y=c('V2','V5','V6'))
   ss_bim_swap<-merge(ss, bim, by.x=c('snp','A1','A2'), by.y=c('V2','V6','V5'))
@@ -497,26 +278,65 @@ alignSS <- function(ss,bim){
   ss<-ss[ss$snp %in% ss_bim_match$snp | ss$snp %in% ss_bim_swap$snp,] 
   ss$beta[ss$snp %in% ss_bim_swap$snp] <- -ss$beta[ss$snp %in% ss_bim_swap$snp]
   
-  ss$MAF[ss$snp %in% ss_bim_swap$snp] <- 1-ss$MAF[ss$snp %in% ss_bim_swap$snp]
-  
   return(ss)
 }
-sums1.region <- alignSS(sums1.region,bim)
-sums2.region <- alignSS(sums2.region,bim)
 
-#Return warning if the SNP position alignment seems incorrect
-if(!identical(paste0(sums1.region$snp,"_",sums1.region$pos),
-             paste0(sums2.region$snp,"_",sums2.region$pos))){
+# Read in reference SNP data to match alleles 
+bim<-fread(paste0(opt$LDreference,reg_range["chr"],'.bim'))
+
+#Filter to snps in the define chromosome:position range and present in the LD reference data
+#Mutate to calculate minor allele frequency and varbeta.
+sums.region <- lapply(sums, function(x){
+  x %>%
+    filter(chr==reg_range["chr"],
+           pos>=reg_range["start"],
+           pos<=reg_range["stop"],
+           snp %in% bim[["V2"]]
+    ) %>%
+    arrange(match(snp, bim[["V2"]])) %>%
+    mutate(MAF=if_else(MAF>0.5,1-MAF,MAF),
+           varbeta = SE^2) %>%
+    alignSS(.,bim)
+    
+})
+
+snpsavail<- lapply(sums.region,nrow)
+sink(file = logfile, append = T)
+cat("Number of SNPs in common between LD reference and each set of sumstats in tested region:\n", paste0(names(snpsavail)," = ",snpsavail,collapse = "\n"),"\n",sep='')
+sink()
+rm(snpsavail)
+
+#Intersect the snp lists to find those common across traits
+snplist <- Reduce(intersect,lapply(sums.region,function(x){x$snp}))
+sink(file = logfile, append = T)
+#Print some information to console
+cat(paste0("N SNPs in common across traits after harmonising to LD reference: ", length(snplist),"\n"))
+sink()
+
+#Intersect the overlapping SNPs, and assign sequence position in common snp sequence (based on rownumber).
+sums.region <- lapply(sums.region, function(x){x %>%
+    filter(snp %in% snplist) %>%
+    mutate(position = row_number())
+})
+
+snpid<- lapply(sums.region,function(x){paste0(x$snp,"_",x$pos)})
+#Return warning if the SNP position alignment seems incorrect.
+#sapply compares for identical results across all vectors relative the first vector
+if(!all(sapply(snpid[-1],identical, snpid[[1]]))){
   sink(file = logfile, append = T)
-  cat("WARNING: SNP names and genomic positions do not match between datasets. Please check that these have been aligned correctly.")
+  cat("WARNING: SNP names and genomic positions do not match between all datasets. Please check that these have been aligned correctly.")
   sink()
 }
+rm(snpid)
+
+#Separate into distinct objects consistent with initial script config for downstream analysis
+sums1.region <- sums.region[[1]]
+sums2.region <- sums.region[[2]]
 
 
 ######
 # Generate LD matrix (for SuSiE)
 ######
-
 
 if(opt$runMode %in% c("trySusie", "doBoth")){
   #Extract snps and write list to file in subdirectory of results directory
@@ -593,13 +413,16 @@ if(length(opt$GWASsumplots)>0){
 #type = "cc" or "quant" depending on trait type
 #s = case control proportion if "cc"
 sums1.region <- as.list(sums1.region)
-sums1.region$type <- opt$type1
-if(opt$type1=="cc"){sums1.region$s <- opt$prop1}
+sums1.region$type <- tolower(GWASconfig[traits[1],on="ID"]$type)
+if(sums1.region$type=="cc"){sums1.region$s <- GWASconfig[traits[1],on="ID"]$prop
+} else if(sums1.region$type=="quant" && !is.na(GWASconfig[traits[1],on="ID"]$traitSD)){sums2.region$sdY <- GWASconfig[traits[1],on="ID"]$traitSD}
 if(opt$runMode %in% c("trySusie", "doBoth")){sums1.region$LD <- ld}
 
+
 sums2.region <- as.list(sums2.region)
-sums2.region$type <- opt$type2
-if(opt$type2=="cc"){sums2.region$s <- opt$prop2}
+sums2.region$type <- tolower(GWASconfig[traits[2],on="ID"]$type)
+if(sums2.region$type=="cc"){sums2.region$s <- GWASconfig[traits[2],on="ID"]$prop
+} else if(sums2.region$type=="quant" && !is.na(GWASconfig[traits[2],on="ID"]$traitSD)){sums2.region$sdY <- GWASconfig[traits[2],on="ID"]$traitSD}
 if(opt$runMode %in% c("trySusie", "doBoth")){sums2.region$LD <- ld}
 
 
@@ -1157,7 +980,7 @@ for(i in 1:length(toPlot)){
     sink(file = logfile, append = T)
     
     if(current=="susie"){
-      cat("\nGenes located within a 10Kb window around the top 10% of snps from credible sets are tabulated in: ", basename(sets_outpath),"\n")
+      cat("\nGenes located within a 10Kb window around the top 10% of snps from current pair of SuSiE credible sets are tabulated in: ", basename(sets_outpath),"\n")
     } else {
       cat("\nGenes located within a 10Kb window around the top 10% of coloc.abf snps are tabulated in: ", basename(sets_outpath),"\n")
     }
@@ -1311,8 +1134,6 @@ for(i in 1:length(toPlot)){
 sink(file = logfile, append = T)
 cat("------------------------------\n")
 sink()
-
-
 
 #Write to log which GWAS summary plots have been written
 sink(file = logfile, append = T)
