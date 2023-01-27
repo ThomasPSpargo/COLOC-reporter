@@ -7,7 +7,7 @@
 
 #Define a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
 ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMapping=NULL,shapeMapping=NULL,figdir,traits,returnplot=TRUE,
-                          facetTraits=FALSE,nameColourLegend="Trait: Credible set",nameShapeLegend=NULL,alignment){
+                          facetTraits=FALSE,facetNrow=1,nameColourLegend="Trait: Credible set",nameShapeLegend=NULL,alignment){
   
   #Setup y-axis parameters (and where required adjust data)
   if(tolower(yaxis)=="p"){
@@ -34,10 +34,10 @@ ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMa
   }
   
   #Rescale x-axis into MBs or KBs
-  if((xlim[2]-xlim[1])>1000000){
+  if((xlim[2]-xlim[1])>100000){
     xscale <- 1000000
     xscale_magnitude <- " [Mb]"
-  } else if ((xlim[2]-xlim[1])>1000) {
+  } else if ((xlim[2]-xlim[1])>100) {
     xscale <- 1000
     xscale_magnitude <- " [Kb]"
   } else {
@@ -53,12 +53,15 @@ ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMa
   plot_root <- ggplot(dset,aes(!!!aesthetics))+
     geom_point()+
     theme_bw()+
-    scale_x_continuous(limits = xlim, labels=scales::label_number(scale = 1 / xscale,accuracy = 0.01))+ #Scale axis magnitude dynamically
+    scale_x_continuous(limits = xlim,
+                       breaks = scales::breaks_extended(n=4), 
+                       labels = scales::label_number(scale = 1 / xscale,accuracy = 0.1) #Scale axis magnitude dynamically
+    )+ 
     labs(y=ylab,x=paste0("GRCh",alignment," genomic position (",target_region,")",xscale_magnitude))
   
   if(facetTraits==TRUE){
     plot_root <- plot_root +
-      facet_wrap(~trait, nrow = 1)
+      facet_wrap(~trait, nrow = facetNrow)
   }
   
   #Add Colouring if specified
@@ -74,8 +77,7 @@ ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMa
   if(!is.null(shapeMapping)){
     plot_root <- plot_root +
       #scale_shape_manual(na.value = 19, values=17,breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
-    scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
-                                            
+      scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
       )+
       guides(shape=guide_legend(title=nameShapeLegend,order=2))
   }

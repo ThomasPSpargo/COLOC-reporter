@@ -121,6 +121,23 @@ ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00",
               "blue1", "steelblue4", "darkturquoise", "green1", "yellow4", 
               "yellow3", "darkorange4", "brown")
 
+#Function to scale x-axis based on plot range
+xScaler <- function(range){
+  #Rescale x-axis into MBs or KBs
+  if(range>100000){
+    xscale <- 1000000
+    xscale_magnitude <- " [Mb]"
+  } else if (range>100) {
+    xscale <- 1000
+    xscale_magnitude <- " [Kb]"
+  } else {
+    xscale <- 1
+    xscale_magnitude <- ""
+  }
+  return(list(xscale=xscale,xscale_magnitude=xscale_magnitude))
+}
+
+
 sink(file = logfile, append = F)
 cat(
   '#################################################################
@@ -284,6 +301,17 @@ alignSS <- function(ss,bim){
 # Read in reference SNP data to match alleles 
 bim<-fread(paste0(opt$LDreference,reg_range["chr"],'.bim'))
 
+#Return total snps available
+snpsavail<- lapply(sums,function(x){
+  y <- x[x$chr==reg_range["chr"] &
+         x$pos>=reg_range["start"] &
+         x$pos<=reg_range["stop"],]
+  nrow(y)})
+sink(file = logfile, append = T)
+cat("Total number of SNPs for each sumstats in tested region:\n", paste0(names(snpsavail)," = ",snpsavail,collapse = "\n"),"\n",sep='')
+sink()
+rm(snpsavail)
+
 #Filter to snps in the define chromosome:position range and present in the LD reference data
 #Mutate to calculate minor allele frequency and varbeta.
 sums.region <- lapply(sums, function(x){
@@ -300,6 +328,7 @@ sums.region <- lapply(sums, function(x){
     
 })
 
+#Return snps available after harmonising with sumstats
 snpsavail<- lapply(sums.region,nrow)
 sink(file = logfile, append = T)
 cat("Number of SNPs in common between LD reference and each set of sumstats in tested region:\n", paste0(names(snpsavail)," = ",snpsavail,collapse = "\n"),"\n",sep='')
@@ -371,7 +400,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     
   } else {
     sink(file = logfile, append = T)
-    cat("Existing LD matrix found, skipping call to PLINK\n")
+    cat("Existing LD matrix found, skipping call to PLINK.\n")
     sink()
   }
   
@@ -491,11 +520,16 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     aesthetics<- list(colour=colourMapping) %>%
       lapply(., function(x) if (!is.null(x)) sym(x))
     
+    xScale<- xScaler(reg_range[["stop"]]-reg_range[["start"]])
+    
     pips<- ggplot(sets,aes(x=pos,y=variable_prob,!!!aesthetics))+
       geom_point() +
       theme_bw()+
       theme(plot.title = element_text(hjust=0.5))+
-      labs(y="PIP",x=paste0("GRCh",opt$genomeAlignment," genomic position (",target_region,")"),title=title)
+      scale_x_continuous(breaks = scales::breaks_extended(n=4), 
+                         labels=scales::label_number(scale = 1 / xScale$xscale,accuracy = 0.1) #Scale axis magnitude dynamically
+      )+ 
+      labs(y="PIP",x=paste0("GRCh",opt$genomeAlignment," genomic position (",target_region,")",xScale$xscale_magnitude),title=title)
     
     #Add colours to plots if a credible set has been identified
     if(!is.null(colourMapping)){
@@ -850,7 +884,7 @@ if("coloc.susie" %in% coloc_performed){
   write.table(clc$results,file=sets_outpath,sep = ",",row.names=FALSE)
   
   sink(file = logfile, append = T)
-  cat("\nSNPwise posterior probabilities of a shared variant for",paste(traits,collapse = " & "),"under coloc.susie are tabulated in:\n", basename(sets_outpath),"\n")
+  cat("\nSNPwise posterior probabilities of being a shared variant for",paste(traits,collapse = " & "),"under coloc.susie are tabulated in:\n", basename(sets_outpath),"\n")
   sink()
   
   #Prepare plotting for each 'row' of coloc.susie
@@ -1004,19 +1038,9 @@ for(i in 1:length(toPlot)){
     #plot_rng <- c(min(Genes_subset$start_window[Genes_subset$external_gene_source=="HGNC Symbol"]),max(Genes_subset$end_window[Genes_subset$external_gene_source=="HGNC Symbol"]))
     plot_rng <- c(min(c(min_bp,Genes_subset$start_window)),max(c(max_bp,Genes_subset$end_window)))
     
-    
-    #Rescale x-axis into MBs or KBs
-    if((plot_rng[2]-plot_rng[1])>1000000){
-      xscale <- 1000000
-      xscale_magnitude <- " [Mb]"
-    } else if ((plot_rng[2]-plot_rng[1])>1000) {
-      xscale <- 1000
-      xscale_magnitude <- " [Kb]"
-    } else {
-      xscale <- 1
-      xscale_magnitude <- ""
-    }
-
+    #Determine x-scale magnitude conversion
+    xScale<-xScaler(plot_rng[2]-plot_rng[1])
+      
     if(is.null(opt$gene_tracks) || (nrow(Genes_subset)<opt$gene_tracks && !is.null(opt$gene_tracks))){
       #Plot nearby genes using a unique plotting approach, scaling axes accordingly
       gene_near <- Genes_subset %>%
@@ -1067,15 +1091,19 @@ for(i in 1:length(toPlot)){
     #Add universal plot layers
     gene_near <- gene_near + 
       geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0.1)+
-      scale_x_continuous(limits = plot_rng, labels=scales::label_number(scale = 1 / xscale,accuracy = 0.01))+ #Scale axis magnitude dynamically
-      labs(x=paste0("GRCh",opt$genomeAlignment," genomic position (Chr", reg_range["chr"],":",plot_rng[1],"-",plot_rng[2],")",xscale_magnitude),
+      scale_x_continuous(limits = plot_rng,
+                         breaks = scales::breaks_extended(n=4), 
+                         labels=scales::label_number(scale = 1 / xScale$xscale,accuracy = 0.1))+ #Scale axis magnitude dynamically
+      labs(x=paste0("GRCh",opt$genomeAlignment," genomic position (Chr", reg_range["chr"],":",plot_rng[1],"-",plot_rng[2],")",xScale$xscale_magnitude),
            y="Nearby genes")
 
     
     #Narrow the snp plot xlim to match gene_near
     suppressMessages({ #Suppress warning about 'double-setting' xlim
       snp_PP_range <- snp_PP +
-        scale_x_continuous(limits = plot_rng, labels=scales::label_number(scale = 1 / xscale,accuracy = 0.01)) #Scale axis magnitude dynamically
+        scale_x_continuous(limits = plot_rng,
+                           breaks = scales::breaks_extended(n=4), 
+                           labels=scales::label_number(scale = 1 / xScale$xscale,accuracy = 0.1)) #Scale axis magnitude dynamically
     })
     
     #If susie has been plotted, colouring is used to label Susie credible sets, adjust legend to include only snps in the new plot range

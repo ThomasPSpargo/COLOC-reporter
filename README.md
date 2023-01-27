@@ -64,7 +64,7 @@ ___PLINK executables___
 
 The PLINK software (v1.90) must be installed before calling to `colocaliseRegion.R`, where it is used for calculating linkage disequilibrium betweeen SNPs.
 
-PLINK2 is not a dependency of the main workflow but is required for the `./scripts/prep_1kg.sh` script, which is used to prepare the LD reference files for the 1000 genomes sample (see the relevant [section](https://github.com/ThomasPSpargo/COLOC-reporter#loopcolocaliseregionsh-input-files) below).
+PLINK2 is not a dependency of the main workflow but is required for the `./scripts/prep_1kg.sh` script, which is used to prepare the LD reference files with GRCh37 alignment for the 1000 genomes sample (see the relevant [section](https://github.com/ThomasPSpargo/COLOC-reporter#loopcolocaliseregionsh-input-files) below).
 
 
 ### `loopColocaliseRegion.sh` input files
@@ -139,11 +139,11 @@ __Output files per-analysis__
 
 The file `./coloc/results/<prefix>_coloc/colocalisation.log`, where `<prefix>` identifies the name given to a particular analysis, gives an overview of the results obtained from `colocaliseRegion.R`. The summary includes description of initial summary statistic processing and will also indicate where more detailed outputs for the analyses can be found.
 
-If colocalisation analysis without finemapping is requested, the results of analysis using `coloc.abf` will be returned.
+If running colocalisation analysis without prior finemapping, the results of analysis using `coloc.abf` will be returned.
 
-If colocalisation analysis with SuSiE finemapping is requested, SuSiE finemapping results will be returned for each of traits analysed. The results summary of colocalisation analysis with `coloc.susie` will be returned if at least one credible set can be identified per trait. If the finemapping step fails for one or both traits, colocalisation analysis will default to `coloc.abf`, skipping finemapping.
+If running colocalisation analysis with the prior SuSiE finemapping step, finemapping results will be returned for each of traits analysed. The results summary of colocalisation analysis with `coloc.susie` will be returned if at least one credible set can be identified per trait. If the finemapping step fails for one or both traits, colocalisation analysis will default to `coloc.abf`, skipping finemapping.
 
-The results of both `coloc.abf` and `coloc.susie` will be returned analysis with both approaches are requested (the default), and if finemapping is successful.
+The results of both `coloc.abf` and `coloc.susie` can both be obtained if this is requested (the default), and if finemapping is successful.
 
 __Concatentating across multiple analyses__
 
