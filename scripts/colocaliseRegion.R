@@ -15,7 +15,7 @@ option_list = list(
   make_option("--plink", action="store", default='plink', type='character',
               help="Path to PLINK executable (syntax written for PLINK 1.9). By default, has the value 'plink'"),
   make_option("--traits", action="store", default=NULL, type='character',
-              help="Comma separated list of IDs for traits to analyse (e.g. 'P1,P2'), as relevant to the summary statistics provided in --sumstat1 and --sumstat2 options."),
+              help="Comma separated list of IDs for traits to analyse (e.g. 'P1,P2'), as relevant to the summary statistics defined in the  --GWASconfig input file."),
   make_option("--set_locus", action="store", default=NA, type='character',
               help='Specify target locus to test, either as a number referring to a locus from --LAVAfile, or as a comma separated list of the format "chromosome,start_position,end_position" (e.g. 17,43460501,44865832).'),
   make_option("--LDreference", action="store", default=NA, type='character',
@@ -23,23 +23,23 @@ option_list = list(
   make_option("--GWASconfig", action="store", default=NULL, type='character',
               help="Path to file specifying configuration of GWAS sumstats. Configuration will be determined by identifying rows whose IDs match the --traits option."),
   make_option("--runMode", action="store", default="trySusie", type='character',
-              help="Character string, any of 'trySusie', 'skipSusie', 'doBoth'.\nIf 'doBoth', both coloc.abf and coloc.susie will attempt to run.\nIf 'trySusie' coloc.susie will be used if SuSiE finemapping identifies at least 1 credible set in each trait and coloc.abf is returned if the SuSiE finemapping step fails.\nIf 'skipSusie', only coloc.abf will be applied, and processes necessary for coloc.susie are skipped (e.g. no need to call to plink and generate LD matrix); the LD reference will however still still used for SNP alignment."),
+              help="Character string, any of 'trySusie', 'skipSusie', 'doBoth','finemapOnly'.\nIf 'doBoth', both coloc.abf and coloc.susie will attempt to run.\nIf 'trySusie' coloc.susie will be used if SuSiE finemapping identifies at least 1 credible set in each trait and coloc.abf is returned otherwise.\nIf 'skipSusie', only coloc.abf will be applied, and processes necessary for coloc.susie are skipped (e.g. no need to call to plink and generate LD matrix); the LD reference will however still still used for SNP alignment.\nIf 'finemapOnly' then univariate finemapping is performed which can be applied across any number of traits. Note however that only snps in common across all traits and the reference panel will be retained. Therefore, for colocalisation analysis it may be preferable to harmonise summary statistics used in colocalisation analysis pairwise."),
   make_option("--force_matrix", action="store", default=FALSE, type='logical',
               help="If TRUE, the LD matrix will always be recomputed using PLINK. If FALSE, the default, the LD matrix will only be computed if the expected ld_matrix.snplist and ld_matrix.ld files are absent from the <output>/LDmatrix directory."),
   make_option("--out", action="store", default="./COLOC-reporter", type='character',
               help="Path and prefix for directory in which to return all outputs. Defaults to ./COLOC-reporter. When running multiple analyses, unique output directories are essential for tidy file organisation."),
   make_option("--GWASsumplots", action="store", default="p", type='character',
-              help="Character string or vector with any combination of c('PIP','p','z','beta'); defaults to 'p'. Generate ggplots comparing summary statistic results on named statistic for both traits. See also the associated --GWASsumplots_onefile --GWASsumplots_incfinemapping options. PIP refers to posterior inclusion probabilities for snps as indicated from SuSiE"),
+              help="Comma separated string with any combination of 'PIP','p','z','beta'; defaults to 'p'. Generate ggplots comparing summary statistic results on named statistic for both traits. See also the associated --GWASsumplots_onefile --GWASsumplots_incfinemapping options. PIP refers to posterior inclusion probabilities for snps as indicated from SuSiE"),
   make_option("--GWASsumplots_onefile", action="store", default=FALSE, type='logical',
               help="Logical, defaults to FALSE. When --GWASsumplots has more then one element, indicate TRUE to return all comparisons bound into a single figure; plots will be stacked vertically, in the order of the --GWASsumplots vector."),
   make_option("--GWASsumplots_incfinemapping", action="store", default=TRUE, type='logical',
-              help="Logical, defaults to TRUE. If TRUE, and if any credible sets are identified across the two traits, plots returned by --GWASsumplots will include colouring indicating which snps belong to which credible sets."),
+              help="Logical, defaults to TRUE. If TRUE, and if any credible sets are identified across the two traits, plots returned by --GWASsumplots will include colouring indicating (if any) the finemapping credible sets assigned to each snp."),
   make_option("--genomeAlignment", action="store", default=37, type='numeric',
               help="Indicate the reference genome to which summary statistics and LD reference are aligned. Defaults to 37."),
   make_option("--gene_tracks", action="store", default=NULL, type='numeric',
               help="Numeric. Specify the threshold at which plotting of nearby genes changes from one gene per row to plotting multiple genes across individual rows, labelling genes with geom_text_repel. Defaults to NULL, where per-row plotting has no upper limit. Specify 1 to always plot multiple genes per row, provided their genomic positions do not overlap [work in progress]."),
   make_option("--restrict_nearby_gene_plotting_source", action="store", default=NULL, type='character',
-              help="Comma delimited character string indicating sources from which nearby genes included in plots are retrieved. Check output tables 'external_gene_source' column for options. Included as an option to reduce overplotting of obscure gene symbols. If NULL, all sources will plot"),
+              help="Comma delimited character string indicating sources from which nearby genes included in plots are retrieved. Check output tables 'external_gene_source' column for options. Included as an option to reduce overplotting of obscure gene symbols. If NULL, the default, all sources will plot"),
   make_option("--helperFunsDir", action="store", default=NULL, type='character',
               help="Filepath to directory containing helper functions used within the script")
 )
@@ -49,7 +49,6 @@ opt = parse_args(OptionParser(option_list=option_list))
 #######
 ### Begin script
 #######
-#options(echo=FALSE)
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -68,14 +67,11 @@ if(test==TRUE){
   setwd("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing")
   opt <- list()
   
-  #Not needed
-  #opt$LAVAfile <- "/scratch/users/k1802739/LAVA/results/PD.SZ.bivar"
-  
   # # #TESTING V3
-  opt$set_locus <- "17,43460501,44865832"
+   opt$set_locus <- "17,43460501,44865832"
   opt$GWASconfig <- "./GWAS_samples_testing.txt"
   opt$out <- "./tidy_processingTEST_PD.SZ.chr17"
-  opt$traits <- "PD,SZ"#,ALS")
+  opt$traits <- "PD,SZ,ALS"
   
   opt$LDreference <- './EUR_phase3_chr'
   opt$runMode <- 'doBoth'
@@ -94,7 +90,7 @@ if(test==TRUE){
 }
 
 #Extract names of traits compared, first dropping file path, and then any prefixes indicated by a preceding underscore
-traits <- strsplit(opt$traits,",")[[1]][1:2]
+traits <- strsplit(opt$traits,",")[[1]]
 
 #Read in the configuration options
 GWASconfig<- fread(opt$GWASconfig)
@@ -111,6 +107,9 @@ figdir <- file.path(opt$out,"plots")
 if(!dir.exists(figdir)){dir.create(figdir)}
 tabdir <- file.path(opt$out,"tables")
 if(!dir.exists(tabdir)){dir.create(tabdir)}
+datadir <- file.path(opt$out,"data")
+if(!dir.exists(datadir)){dir.create(datadir)}
+
 
 logfile <- file.path(opt$out,'colocalisation.log')
 
@@ -157,7 +156,8 @@ cat("\n######\n### Setup\n######\n\n")
 
 cat("All outputs will be returned in the directory: ", opt$out,"\n")
 cat("All figures are returned in the subdirectory: ",basename(figdir),"\n")
-cat("and tabular summaries in the subdirectory: ",basename(tabdir),"\n\n")
+cat("with tabular summaries in the subdirectory: ",basename(tabdir),"\n")
+cat("and .Rds files with resources from each main analysis step in the subdirectory: ",basename(datadir),"\n\n")
 
 sink()
 
@@ -182,9 +182,9 @@ if(length(opt$GWASsumplots)>0){
 }
 
   
-########
-##### Import datasets
-########
+######
+### Import datasets
+######
 #Import datasets and convert to tibbles
 sums <- lapply(GWASconfig[traits,on="ID"]$FILEPATH,function(x){tibble(fread(x))})
 names(sums) <- traits
@@ -193,14 +193,14 @@ names(sums) <- traits
 colcheck<- mapply(function(x,trait){
   #Check for column name options match the dataset, warn if not
   colcheck <-  which(!(
-    c(GWASconfig[trait,on="ID"]$pcolumn,
-      GWASconfig[trait,on="ID"]$statcol,
-      GWASconfig[trait,on="ID"]$Ncol,
-      GWASconfig[trait,on="ID"]$chromosome,
-      GWASconfig[trait,on="ID"]$positions,
-      GWASconfig[trait,on="ID"]$error,
-      GWASconfig[trait,on="ID"]$snpcol,
-      GWASconfig[trait,on="ID"]$freq)
+    c(GWASconfig[trait,on="ID"]$p_col,
+      GWASconfig[trait,on="ID"]$stat_col,
+      GWASconfig[trait,on="ID"]$N_col,
+      GWASconfig[trait,on="ID"]$chr_col,
+      GWASconfig[trait,on="ID"]$pos_col,
+      GWASconfig[trait,on="ID"]$se_col,
+      GWASconfig[trait,on="ID"]$snp_col,
+      GWASconfig[trait,on="ID"]$freq_col)
     %in% colnames(x)
   ))
   return(colcheck)
@@ -217,21 +217,21 @@ if(any(colProblem)){
 #mapply is set to SIMPLIFY=FALSE to ensure a list result
 sums<- mapply(function(x,trait){
   #Unless specified to be an odds ratio, rename as beta
-  if(GWASconfig[trait,on="ID"]$statcol=="OR"){
+  if(GWASconfig[trait,on="ID"]$stat_col=="OR"){
     x$beta <- log(x$OR)
-    sums1$OR <- NULL
+    x$OR <- NULL
   } else {
-    names(x)[names(x)==GWASconfig[trait,on="ID"]$statcol] <- "beta"
+    names(x)[names(x)==GWASconfig[trait,on="ID"]$stat_col] <- "beta"
   }
   
   #Rename the other columns  
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$pcolumn] <- "pvalues"
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$Ncol] <- "N"
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$chromosome] <- "chr"
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$positions] <- "pos"
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$error] <- "SE"
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$snpcol] <- "snp"
-  names(x)[names(x)==GWASconfig[trait,on="ID"]$freq] <- "MAF"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$p_col] <- "pvalues"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$N_col] <- "N"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$chr_col] <- "chr"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$pos_col] <- "pos"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$se_col] <- "SE"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$snp_col] <- "snp"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$freq_col] <- "MAF"
     
   return(x)
 },x=sums,trait=traits,SIMPLIFY=FALSE)
@@ -308,7 +308,7 @@ snpsavail<- lapply(sums,function(x){
          x$pos<=reg_range["stop"],]
   nrow(y)})
 sink(file = logfile, append = T)
-cat("Total number of SNPs for each sumstats in tested region:\n", paste0(names(snpsavail)," = ",snpsavail,collapse = "\n"),"\n",sep='')
+cat("Total number of SNPs for each sumstats in tested region:\n", paste0(names(snpsavail)," = ",snpsavail,collapse = "\n"),"\n\n",sep='')
 sink()
 rm(snpsavail)
 
@@ -340,7 +340,10 @@ snplist <- Reduce(intersect,lapply(sums.region,function(x){x$snp}))
 sink(file = logfile, append = T)
 #Print some information to console
 cat(paste0("N SNPs in common across traits after harmonising to LD reference: ", length(snplist),"\n"))
+if(length(snplist)==0){cat("Analysis stopped as no SNPs remain.\n");stop("Analysis stopped as no SNPs remain.")}
 sink()
+
+
 
 #Intersect the overlapping SNPs, and assign sequence position in common snp sequence (based on rownumber).
 sums.region <- lapply(sums.region, function(x){x %>%
@@ -358,16 +361,11 @@ if(!all(sapply(snpid[-1],identical, snpid[[1]]))){
 }
 rm(snpid)
 
-#Separate into distinct objects consistent with initial script config for downstream analysis
-sums1.region <- sums.region[[1]]
-sums2.region <- sums.region[[2]]
-
-
 ######
 # Generate LD matrix (for SuSiE)
 ######
 
-if(opt$runMode %in% c("trySusie", "doBoth")){
+if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   #Extract snps and write list to file in subdirectory of results directory
   
   #Check for the expected LD matrix output; if files are absent or if --force_matrix is set, generate using PLINK
@@ -410,51 +408,54 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
   dimnames(ld)<-list(ld_names, ld_names) #assign dimnames to LD object
   
   #As a sanity check, redo alignment based on plink output order to ensure snps are correctly arranged in base pair order, and assign 'positions' for coloc
-  sums1.region <- sums1.region %>%
-    filter(snp %in% ld_names) %>%
-    arrange(match(snp, ld_names)) %>%
-    mutate(position = row_number())
-  
-  sums2.region <- sums2.region %>%
-    filter(snp %in% ld_names) %>%
-    arrange(match(snp, ld_names)) %>%
-    mutate(position = row_number())
+  sums.region <- lapply(sums.region, function(x){
+    x %>%
+      filter(snp %in% ld_names) %>%
+      arrange(match(snp, ld_names)) %>%
+      mutate(position = row_number())
+  })
 } 
-
 
 ######
 # If doing summary plotting, extract a minimal combination of statistics from the harmonised datasets
 # this will be used in plotting after attempting finemapping step
 ######
 if(length(opt$GWASsumplots)>0){
-  p_z_plotcols <-  c("snp","pos","beta","SE","pvalues")
-  minimal_P1P2_df<- cbind(sums1.region[,p_z_plotcols],trait=unname(traits)[1]) %>%
-    full_join(cbind(sums2.region[,p_z_plotcols],trait=unname(traits)[2]),by=c(p_z_plotcols,"trait"))
+  minimal_P1P2_df<- mapply(function(x,trait,keepcols){cbind(x[,keepcols],trait)
+  },sums.region,traits,
+  MoreArgs=list(keepcols=c("snp","pos","beta","SE","pvalues")), SIMPLIFY = FALSE) %>%
+    do.call(rbind,.) 
 }
 
-
 ######
-### Prepare for colocalisation analysis; convert data.frame to list and add expected list elements
+### Prepare for colocalisation analysis; convert each data.frame to list and add expected list elements
 ######
 
 ##Expected elements:
 #LD matrix (if passing via SuSiE)
 #type = "cc" or "quant" depending on trait type
 #s = case control proportion if "cc"
-sums1.region <- as.list(sums1.region)
-sums1.region$type <- tolower(GWASconfig[traits[1],on="ID"]$type)
-if(sums1.region$type=="cc"){sums1.region$s <- GWASconfig[traits[1],on="ID"]$prop
-} else if(sums1.region$type=="quant" && !is.na(GWASconfig[traits[1],on="ID"]$traitSD)){sums2.region$sdY <- GWASconfig[traits[1],on="ID"]$traitSD}
-if(opt$runMode %in% c("trySusie", "doBoth")){sums1.region$LD <- ld}
+#Adjust column names into COLOC format.
+#mapply is set to SIMPLIFY=FALSE to ensure a list result
+sums.region<- mapply(function(x,trait){
+  
+  x <- as.list(x)
+  x$type <- tolower(GWASconfig[trait,on="ID"]$type)
+  if(x$type=="cc"){x$s <- GWASconfig[trait,on="ID"]$prop
+  } else if(x$type=="quant" && !is.na(GWASconfig[trait,on="ID"]$traitSD)){x$sdY <- GWASconfig[trait,on="ID"]$traitSD}
+  if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){x$LD <- ld}
+  
+  #Save the formatted dataset as a resource
+  datasetpath<- file.path(datadir,"datasets")
+  if(!dir.exists(datasetpath)){dir.create(datasetpath)}
+  saveRDS(x,file=file.path(datasetpath,paste0("harmonised_dataset_",trait,".Rds")))
+  
+  return(x)
+},x=sums.region,trait=traits,SIMPLIFY=FALSE)
 
-
-sums2.region <- as.list(sums2.region)
-sums2.region$type <- tolower(GWASconfig[traits[2],on="ID"]$type)
-if(sums2.region$type=="cc"){sums2.region$s <- GWASconfig[traits[2],on="ID"]$prop
-} else if(sums2.region$type=="quant" && !is.na(GWASconfig[traits[2],on="ID"]$traitSD)){sums2.region$sdY <- GWASconfig[traits[2],on="ID"]$traitSD}
-if(opt$runMode %in% c("trySusie", "doBoth")){sums2.region$LD <- ld}
-
-
+######
+### Extract genes around tested region
+######
 
 #Import gene information for region
 ensembl = useEnsembl(biomart="ensembl", dataset="hsapiens_gene_ensembl", GRCh=opt$genomeAlignment)
@@ -465,16 +466,57 @@ gene_window<-10000
 Genes$start_window<-Genes$start_position-gene_window
 Genes$end_window<-Genes$end_position+gene_window
 
-
 # Do main Susie steps
-if(opt$runMode %in% c("trySusie", "doBoth")){
+if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
+  
+  #Run SuSiE across datasets and generate report summaries
+  #A guideline for N is specified since this is highly recommended
+  
+  SusieFail <- logical(0) #SusieFail indicates if susie was successful across traits: TRUE indicates an error was thrown
+  susie <- mapply(function(dset,trait){
+    tryCatch({
+      #Run Susie
+      finemap<- runsusie(dset,n=max(dset$N))
+      
+      #Save the susie results as a resource
+      finemappath<- file.path(datadir,"finemapping")
+      if(!dir.exists(finemappath)){dir.create(finemappath)}
+      saveRDS(finemap,file=file.path(finemappath,paste0("susie_results_",trait,".Rds")))
+      
+      #Assign FALSE if errors weren't thrown
+      assign("SusieFail",c(SusieFail,FALSE),envir=.GlobalEnv)
+      
+      return(finemap)},
+      
+      error   = function(x){ #If there is an issue, flag in global environment and print to log file
+        warning(x)
+        assign("SusieFail",c(SusieFail,TRUE),envir=.GlobalEnv)
+        
+        sink(file = logfile, append = T)
+        cat("------------------------------\n")
+        cat("SuSiE fine-mapping error produced for", traits[length(SusieFail)],". Please see the following:\n")
+        cat("Error in", toString(last.warning),":\n",names(last.warning),"\n")
+        cat("------------------------------\n")
+        sink()
+      })
+  },sums.region,traits,SIMPLIFY = FALSE)
+  
+  sink(file = logfile, append = T)
+  cat("\n######\n### SuSiE fine-mapping results\n######\n\n")
+  sink()
   
   ######
-  ### Define function to summarise susie results for both datasets
+  ### Summarise susie results across datasets
   ######
-  susie_report <- function(susie.fit,basedata,trait){
+  susie_rep <- mapply(function(susie.fit,basedata,trait,failed){
+    
+    if(failed){ #For a trait with a failed finemapping step, terminate early and return empty list for downstream logic-checks
+      return(list(csFound=FALSE,sets=data.frame(snp=snplist,cs=factor(NA_character_),
+                                                              variable_prob=NA_real_)))
+    } else { #Otherwise, produce a summary!
+    
     #Drop the list elements of basedata which cannot be converted to a dataframe, and then convert
-    basedata$s <- basedata$type <- basedata$LD <- NULL
+    basedata$s <- basedata$type <- basedata$LD <- basedata$sdY <- NULL
     basedata <- as.data.frame(basedata)
     
     sum_susie <- summary(susie.fit)
@@ -556,7 +598,7 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
         
         finemap_summary$NSNP[j] <- length(snp_index)
         finemap_summary$TopPIP[j]<-max(susie.fit$pip[snp_index])
-        finemap_summary$TopPIPsnp[j]<- paste(names(susie.fit$pip)[susie.fit$pip==finemap_summary$TopPIP[j]], collapse=', ')
+        finemap_summary$TopPIPsnp[j]<- paste(names(susie.fit$pip)[susie.fit$pip==finemap_summary$TopPIP[j] & seq_along(susie.fit$pip) %in% snp_index], collapse=', ')
         
         ss_subset<-basedata[(basedata$snp %in% names(susie.fit$pip)[snp_index]),]
         min_bp<-min(ss_subset$pos)
@@ -580,12 +622,14 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
           Genes_subset %>%
             dplyr::select(-c(start_window,end_window)) %>%
             write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
-          
         }
       }
       finemap_summary$variable <- NULL
       
-      #Return output if there has been a credible set
+      #Write finemapping summary to a file and concatenate with previous results if file already exists
+      finemapSummary<- file.path(tabdir,"results_summary_finemapping.csv")
+      write.table(cbind(trait=unname(trait),finemap_summary),
+                  file=finemapSummary,sep = ",",row.names=FALSE,col.names = !file.exists(finemapSummary),append = file.exists(finemapSummary))
       
     } else {
       finemap_summary <- "No 95% confidence credible sets could be identified"
@@ -602,89 +646,47 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
     
     #Return results just in case
     return(list(finemap_summary=finemap_summary,tab_out=tab_out,csFound=csFound, sets=sets))
-  }
-  
-  #Catch failures in susie
-  susiefail <- function(x=NULL,ntrait,isError=FALSE){warning(x)
-    if(isError==TRUE){
-      #Flag the fail in the global environment, only if there is a full error; warnings will not stop downward work
-      assign(paste0("msg",ntrait),TRUE,envir=.GlobalEnv)
-      
-      type<- "error"
-    } else {
-      type<- "warning"
     }
-    
-    #If triggered, Return the error/warning in summary file
+  },susie,basedata=sums.region,trait=traits,failed=SusieFail,SIMPLIFY = FALSE)
+  
+  
+  if(file.exists(file.path(tabdir,"results_summary_finemapping.csv"))){
     sink(file = logfile, append = T)
-    cat("------------------------------\n")
-    cat("SuSiE fine-mapping ", type," produced for", traits[ntrait],". Please see the following:\n")
-    cat(type," in", toString(last.warning),":\n",names(last.warning),"\n")
-    cat("------------------------------\n")
+    cat("\nSummaries of credible sets identified by susie across traits are all available in the file: results_summary_finemapping.csv\n")
     sink()
   }
   
-  sink(file = logfile, append = T)
-  cat("\n######\n### SuSiE fine-mapping results\n######\n\n")
-  sink()
-  #Run SuSiE for both datasets and generate report summaries
-  #A guideline for N is specified since this is highly recommended
-  msg1 <- FALSE
-  tryCatch(susie1 <- runsusie(sums1.region,n=max(sums1.region$N)),
-           #warning = function(x){susiefail(x,1)},
-           error   = function(x){susiefail(x,1,isError=TRUE)})
-  msg2 <- FALSE
-  tryCatch(susie2 <- runsusie(sums2.region,n=max(sums2.region$N)),
-           #warning = function(x){susiefail(x,2)},
-           error   = function(x){susiefail(x,2,isError=TRUE)})
-  
-  
-  if(msg1==FALSE){
-    susie1_rep <- susie_report(susie.fit=susie1,basedata=sums1.region,trait=traits[1])
-  } else {
-    #Empty list for downstream logic-checks
-    susie1_rep <- list(csFound=FALSE,sets=data.frame(snp=snplist,
-                                                     cs=factor(NA_character_),
-                                                     variable_prob=NA_real_))
-  }
-  
-  if(msg2==FALSE){
-    susie2_rep <- susie_report(susie2,sums2.region,trait=traits[2])
-  } else {
-    #Empty list for downstream logic-checks
-    susie2_rep <- list(csFound=FALSE,sets=data.frame(snp=snplist,
-                                                     cs=factor(NA_character_),
-                                                     variable_prob=NA_real_))
-  }
   
   #Flag either of the SuSiE calls failed
-  if(any(msg1,msg2)){
+  if(any(SusieFail)){
     
     ######
     ### Check alignment of Beta and LD, may lead to issues with LD matrix convergence if not aligned in the same direction
     ######
-    pdf(file=file.path(figdir,"Beta_LD_alignment.pdf"),width=14,height=7)
-    par(mfrow=c(1,2))
-    check_alignment(sums1.region)
-    check_alignment(sums2.region)
+    pdf(file=file.path(figdir,"Beta_LD_alignment.pdf"),width=7,height=7)
+    lapply(sums.region,check_alignment)
     dev.off()
     
     sink(file = logfile, append = T)
-    cat("The SuSiE fine-mapping step failed for at least one of the two traits (see above).\n")
-    cat("The figure 'Beta_LD_alignment.pdf' has also been generated, which allows checking of alignment between summary statistic beta's and the LD matrix.\nSee https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
+    cat("The SuSiE finemapping step returned an error for at least one trait (see above).\n")
+    cat("Figures have been generated in 'Beta_LD_alignment.pdf', check these to compare alignment of summary statistic betas and the LD matrix.\nSee https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
     sink()
     
-  } else if(!all(susie1_rep$csFound,susie2_rep$csFound)){
+  } else if(!all(sapply(susie_rep[1:2],function(x)x$csFound))){ #Return this message on the basis of only the first two traits
     sink(file = logfile, append = T)
-    cat("Credible sets were not identified for at least one trait, thus coloc.susie cannot be utilised.\n")
+    cat("Credible sets were not identified for at least one trait, therefore coloc.susie cannot be utilised.\n")
     sink()
   }
 } else {
-  #If susie is skipped entirely, produce some dummy values that are required for subsequent logic checks
-  susie1_rep <- susie2_rep <- list(csFound=FALSE, sets=data.frame(snp=snplist,
-                                                                  cs=factor(NA_character_),
-                                                                  variable_prob=NA_real_))
-  msg1 <- msg2 <- FALSE
+  #If susie is skipped entirely, produce some dummy values required for subsequent logic checks
+  susie_rep <- sapply(seq_along(sums.region),function(x){
+    list(csFound=FALSE, sets=data.frame(snp=snplist,
+                                        cs=factor(NA_character_),
+                                        variable_prob=NA_real_))
+  })
+    
+  SusieFail <- sapply(seq_along(sums.region),function(x) FALSE)
+  
 }
 
 ######
@@ -693,27 +695,32 @@ if(opt$runMode %in% c("trySusie", "doBoth")){
 if(length(opt$GWASsumplots)>0){
   
   #Extract PIPs for each trait 
-  snp_PIP <- rbind(
-    cbind(susie1_rep$sets[,c("snp","variable_prob")],trait=traits[1]),
-    cbind(susie2_rep$sets[,c("snp","variable_prob")],trait=traits[2])
-  )
+  snp_PIP <- mapply(function(x,trait,keepcols){cbind(x$sets[,keepcols],trait)
+    }, susie_rep, traits,
+    MoreArgs=list(keepcols=c("snp","variable_prob")), SIMPLIFY = FALSE) %>%
+      do.call(rbind,.) 
   
   #Combine SuSiE PIP results with the minimal dataset
   minimal_P1P2_df <- minimal_P1P2_df %>%
     full_join(snp_PIP,by=c("snp","trait"))  #add each PIP
   
   #According to whether any CS have been found, add a CS column to the dataframe
-  if(susie1_rep$csFound || susie2_rep$csFound){
+  if(any(sapply(susie_rep,function(x)x$csFound))){
     
-    #Extract minimal credible set labels, using custom function
-    snp_CS<- joinLabels(x=susie1_rep$sets[,c("snp","cs")],y=susie2_rep$sets[,c("snp","cs")],traits=traits)
-  
+    #Extract credible set summaries per-snp across traits.
+    #Subset to columns, adjust credible set labels, then reduce list across matched DFs and unite cols
+    snp_CS<- mapply(function(x,trait){ 
+      y <- x$sets[,c("snp","cs")]
+      if(length(levels(y$cs))>0){levels(y$cs) <- paste0(trait,":",gsub("^L([0-9]+)\\:.*","\\1",levels(y$cs)))}
+      return(y)
+      },susie_rep,traits,SIMPLIFY = FALSE) %>%
+      reduce(full_join,by="snp") %>%
+      tidyr::unite(.,col=cs, starts_with("cs"), sep = " & ", remove = TRUE, na.rm = TRUE) %>%
+      mutate(cs=as.factor(if_else(cs=="",NA_character_,cs)))
       
-    #Combine SuSiE results with the minimal dataset
-    minimal_P1P2_df <- minimal_P1P2_df %>%
-      full_join(snp_CS,by="snp")          #add CS assignments
-      
-    
+    #Combine SuSiE credible sets with the minimal dataset
+    minimal_P1P2_df <- full_join(minimal_P1P2_df,snp_CS,by="snp")
+
     colourMapping <- "cs" #Set colour attribute 
   } else {
     # #If no SuSiE, assign an empty column
@@ -726,7 +733,7 @@ if(length(opt$GWASsumplots)>0){
   if(opt$GWASsumplots_incfinemapping==FALSE){
     colourMapping <- NULL
   }
-
+  
   
   #Dynamically plot gwas stat summary figures, varying the y-axis accordingly. This is subsequently called within lapply
   #Save files internally, or return plots, depending on the returnplot argument
@@ -760,6 +767,38 @@ if(length(opt$GWASsumplots)>0){
     
   }
 }
+
+if(opt$runMode=="finemapOnly"){
+  sink(file = logfile, append = T)
+  cat("Skipping colocalisation analysis because the 'finemapOnly' setting is declared in the --runMode option.\n")
+  sink()
+  
+} else if(length(traits)==1){
+    sink(file = logfile, append = T)
+    cat("Skipping colocalisation analysis because only one trait has been provided.\n")
+    sink()
+    
+} else {
+  
+  #Subset to traits 1 and 2, if more have been supplied for prior steps.
+  if(length(traits)>2){
+    sink(file = logfile, append = T)
+    cat("Colocalisation analysis can only be performed for pairs of traits. Proceeding with the first two traits only.\n")
+    sink()
+    
+    traits<- traits[1:2]
+    SusieFail<- SusieFail[1:2]
+  }
+  
+  #Separate into distinct objects consistent with initial script config for downstream analysis.
+  #Ensure only the first two datasets are passed onward
+  sums1.region <- sums.region[[1]]
+  sums2.region <- sums.region[[2]]
+  
+  susie1_rep <- susie_rep[[1]]
+  susie2_rep <- susie_rep[[2]]
+  
+
 ######
 ### Proceed with colocalisation step
 ######
@@ -768,11 +807,16 @@ cat("\n######\n### Colocalisation results\n######\n\n")
 sink()
 
 #Character vector to flag which coloc analyses have been performed
-coloc_performed <- vector(mode="character",length=0L)
+coloc_performed <- character(0)
 
 #If either SuSiE call failed, a credible set has not been found for both traits, or if analysis is passed direct to coloc, run coloc.abf
-if(any(msg1,msg2) || !all(susie1_rep$csFound,susie2_rep$csFound) || opt$runMode %in% c("doBoth","skipSusie")){  
+if(any(SusieFail) || !all(susie1_rep$csFound,susie2_rep$csFound) || opt$runMode %in% c("doBoth","skipSusie")){  
   clc.abf<- coloc.abf(dataset1=sums1.region, dataset2=sums2.region)
+  
+  #Save the coloc abf results as a resource
+  colocpath<- file.path(datadir,"colocalisation")
+  if(!dir.exists(colocpath)){dir.create(colocpath)}
+  saveRDS(clc.abf,file=file.path(colocpath,paste0("coloc_abf_",paste0(traits,collapse="_"),".Rds")))
 
   sink(file = logfile, append = T)
   cat("Colocalisation will now be performed without passing first to SuSiE [see coloc::coloc.abf].\n")
@@ -811,8 +855,13 @@ if(any(msg1,msg2) || !all(susie1_rep$csFound,susie2_rep$csFound) || opt$runMode 
 
 #If both susie calls are successful and credible sets identified, run coloc.susie.
 #Note that plots will overwrite any from Coloc.abf.
-if(!any(msg1,msg2) && all(susie1_rep$csFound,susie2_rep$csFound) && opt$runMode %in% c("doBoth","trySusie")){
-  clc<- coloc.susie(dataset1=susie1, dataset2=susie2) ###Run coloc based on susie outputs
+if(!any(SusieFail) && all(susie1_rep$csFound,susie2_rep$csFound) && opt$runMode %in% c("doBoth","trySusie")){
+  clc<- coloc.susie(dataset1=susie[[1]], dataset2=susie[[2]]) ###Run coloc based on susie outputs
+  
+  #Save the coloc abf results as a resource
+  colocpath<- file.path(datadir,"colocalisation")
+  if(!dir.exists(colocpath)){dir.create(colocpath)}
+  saveRDS(clc,file=file.path(colocpath,paste0("coloc_susie_",paste0(traits,collapse="_"),".Rds")))
 
   sink(file = logfile, append = T)
   cat("------------------------------\n")
@@ -849,7 +898,7 @@ if(!any(msg1,msg2) && all(susie1_rep$csFound,susie2_rep$csFound) && opt$runMode 
 #For plotting, generate labels for SNPs with the top 5% posterior probability of being a shared variant
 label_limit <- ceiling(length(snplist)*0.05)
 
-#However, limit the top number of snps to 20 at most 
+#However, limit the top number of snps to 10 at most 
 if(label_limit>10){
   label_limit <- 10
 }
@@ -1045,7 +1094,7 @@ for(i in 1:length(toPlot)){
       #Plot nearby genes using a unique plotting approach, scaling axes accordingly
       gene_near <- Genes_subset %>%
         ggplot(.,aes(x=midpoint, y=external_gene_name))+
-        geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0.2)+
+        geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0)+
         theme_bw()+
         theme(axis.text.y = element_text(face="italic"))
       
@@ -1090,7 +1139,7 @@ for(i in 1:length(toPlot)){
     
     #Add universal plot layers
     gene_near <- gene_near + 
-      geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0.1)+
+      geom_errorbar(aes(xmin=start_position,xmax=end_position),width=0)+
       scale_x_continuous(limits = plot_rng,
                          breaks = scales::breaks_extended(n=4), 
                          labels=scales::label_number(scale = 1 / xScale$xscale,accuracy = 0.1))+ #Scale axis magnitude dynamically
@@ -1158,6 +1207,7 @@ for(i in 1:length(toPlot)){
   }
   
 } 
+} #Bracket indicating the end of the else condition performed when opt$runMode!="finemapOnly"
 
 sink(file = logfile, append = T)
 cat("------------------------------\n")

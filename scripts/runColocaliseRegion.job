@@ -14,22 +14,22 @@ scriptpath=$1
 
 	
 # extract phenotype IDs and locus to analyse
-p1=$2
-p2=$3
-locus=$4
-GWASinfo=$5
+traits=$2
+locus=$3
+GWASinfo=$4
 
 
 #Set analysis options
-LDREFERENCE=$6		#File path and prefix for LD reference plink-binary files
-outpath=$7		#File path and prefix for the output files. Expects P1.P2 delimited
-sumplots=$8		#Which summary plots to generate
-sumplots_onefile=$9 	#Logical indicating whether to put summary plots all into one file
+LDREFERENCE=$5		#File path and prefix for LD reference plink-binary files
+outpath=$6		#File path and prefix for the output files.
+sumplots=$7		#Which summary plots to generate
+sumplots_onefile=$8 	#Logical indicating whether to put summary plots all into one file
 
 #Path to plink executable
-plinkpath=${10}
+plinkpath=${9}
 
-runMode=doBoth		#Which analyses to run. By default tries running both coloc.abf and coloc.susie (assuming CS found when running SuSiE)
+#Which analyses to run
+runMode=${10}
 	
 
 tmp_dir=$(mktemp -d -t ci-XXXXXXXXXX)
@@ -37,7 +37,7 @@ tmp_dir=$(mktemp -d -t ci-XXXXXXXXXX)
 cd  $tmp_dir
 
 #Print to log that a new analysis loop has begun
-printf "########################\nAnalyse traits $p1 and $p2 at locus ${locus}\n\n"
+printf "########################\nAnalysing traits: ${traits} at locus: ${locus}\n"
 	
 
 Rscript $scriptpath \
@@ -51,7 +51,7 @@ Rscript $scriptpath \
 		--restrict_nearby_gene_plotting_source "HGNC Symbol" \
 		--force_matrix FALSE \
 		--out $outpath \
-		--traits "${p1},${p2}" \
+		--traits $traits \
 		--GWASconfig ${GWASinfo} \
 		--helperFunsDir "$(dirname ${scriptpath})/helper_functions"
 

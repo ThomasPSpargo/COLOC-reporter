@@ -7,7 +7,7 @@
 
 #Define a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
 ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMapping=NULL,shapeMapping=NULL,figdir,traits,returnplot=TRUE,
-                          facetTraits=FALSE,facetNrow=1,nameColourLegend="Trait: Credible set",nameShapeLegend=NULL,alignment){
+                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend="Trait: Credible set",nameShapeLegend=NULL,alignment){
   
   #Setup y-axis parameters (and where required adjust data)
   if(tolower(yaxis)=="p"){

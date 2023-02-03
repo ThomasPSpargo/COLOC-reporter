@@ -10,38 +10,44 @@ GWASinfo=${MAIN}/scripts/GWAS_samples.txt			#Input file detailing configuration 
 plinkpath=plink										#If plink executable cannot be automatically identified by system, specify the relevant file path.
 
 scriptpath=${MAIN}/scripts/colocaliseRegion.R		#Path identifying the rscript to run when submitting job
-phenos=${MAIN}/scripts/coloc.phenopairs.txt			#Input file dictating phenotype pairings and loci to analyse
+comparisons=${MAIN}/scripts/set.regions.txt			#Input file dictating phenotype pairings and loci to analyse
 
 
 sumplots=PIP,p,beta 								#A comma-separated string passed to --GWASsumplots, see option help documentation
 sumplots_onefile=FALSE								#Logical setting, set TRUE to provide all plots requested in $sumplots as a single figure
+
+runMode=doBoth		#Which analysis configuration to run (see documentation).
 
 
 #####
 # Run jobs
 #####
 mkdir -p ${MAIN}/logs 			#Make a directory in which to store logfiles
-loops=$(cat $phenos | wc -l) 	#Determine how many times to loop to submit job for all unique phenotype pairs
+loops=$(sed 1d $comparisons | wc -l) 	#Determine how many times to loop to submit job for all unique phenotype pairs
 
 for i in $(seq 1 $loops); do	#Loop for each row of $phenos
 	
-	# extract phenotype IDs and locus to analyse
-	p1=$(awk 'NR=='$i' {print $1}' $phenos)
-	p2=$(awk 'NR=='$i' {print $2}' $phenos)
-	locus=$(awk 'NR=='$i' {print $3}' $phenos)
-			
+	# Extract phenotype IDs and locus to analyse.
+	# The field separator is set explicitly to tab to ensure that the input file is correctly delimited.
+	# i+1 is extracted since the is expected to have a header
+	traits=$(awk  -F "\t" 'NR=='$(($i+1))' {print $1}' $comparisons)
+	locus=$(awk  -F "\t" 'NR=='$(($i+1))' {print $2}' $comparisons)
+	
+	#Convert commas to a better delimiter for filepaths and the log
+	analysis="$(echo $traits | sed -e 's/,/_/g').$(echo $locus | sed -e 's/,/_/g')"
+	
 	#Set filepath and prefix for the analysis
-	outpath=${MAIN}/coloc/results/${p1}.${p2}.${locus}
+	outpath=${MAIN}/coloc/results/${analysis}
 
 	#Print configuration of current analysis
-	printf "########################\nTraits $p1 and $p2 at locus ${locus}\n"
+	printf "########################\nTraits: ${traits} at locus: ${locus}\n"
 	
 	
 	if [[ -f "${outpath}_coloc/colocalisation.log" ]]; then
 		printf "The colocalisation.log file exists in the output directory, analysis is not run\n"
 	else
 		#If no output already, submit as a slurm job
-		sbatch -J ${p1}.${p2}.${locus} -o ${MAIN}/logs/%x.log ${MAIN}/scripts/runColocaliseRegion.job $scriptpath $p1 $p2 $locus $GWASinfo $LDREFERENCE $outpath $sumplots $sumplots_onefile $plinkpath
+		sbatch -J ${analysis} -o ${MAIN}/logs/%x.log ${MAIN}/scripts/runColocaliseRegion.job $scriptpath $traits $locus $GWASinfo $LDREFERENCE $outpath $sumplots $sumplots_onefile $plinkpath $runMode
 
 		printf "\nOutput will be saved in directory with path and prefix:\n${outpath}\n"
 

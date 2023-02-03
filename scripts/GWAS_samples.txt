@@ -1,4 +1,4 @@
-ID	type	prop	traitSD	pcolumn	statcol	Ncol	chromosome	positions	error	snpcol	freq	traitLabel	FILEPATH
+ID	type	prop	traitSD	p_col	stat_col	N_col	chr_col	pos_col	se_col	snp_col	freq_col	traitLabel	FILEPATH
 ALS	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	FREQ	"Amyotrophic lateral sclerosis"	/scratch/users/k1802739/LAVA/inputs/ALS.sumstats.gz
 AD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	REF.FREQ	"Alzheimer's Disease"	/scratch/users/k1802739/LAVA/inputs/AD.sumstats.gz
 FTD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	REF.FREQ	"Frontotemporal dementia"	/scratch/users/k1802739/LAVA/inputs/FTD.sumstats.gz
