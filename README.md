@@ -6,13 +6,15 @@ ___
 
 When describing file structures in this README, "`.`" indicates the main `COLOC-reporter/` directory.
 
-Analysis can be performed using the `./scripts/loopColocaliseRegion.sh` script, which by default runs the most comprehensive analysis protocol available within `./scripts/colocaliseRegion.R`.
+Analysis can be performed using the `./scripts/loopColocaliseRegion.sh` script, which by default runs the most comprehensive analysis protocol available within `./scripts/colocaliseRegion.R`, and applies `./scripts/gwasSummaryPlotter.R` to compare harmonised summary statistic results between pairs of traits prepared for colocalisation analysis.
 
 Within this bash script, analysis is performed for each row of the `set.regions.txt` file, which indicates IDs for GWAS summary statistics and the genomic regions to examine. The `GWAS_samples.txt` file should indicate metadata linked to the IDs defined in `set.regions.txt`, including the configuration of GWAS summary statistic input files.
 
 Plink binary files are also required to provide a reference panel for SNP alignment and determining linkage disequilibrium between SNPs. By default, these scripts are configured to expect the following structure: `./ld_reference/EUR_phase3_chr[1..22].(bed/bim/fam)`. 
 
-The main `colocaliseRegion.R` script can accept several input and analysis configurations. Documentation for these operations are available by running `Rscript ./scripts/colocaliseRegion.R --help`. 
+The main `colocaliseRegion.R` script can accept several input and analysis configurations. Documentation for these operations are available by running `Rscript ./scripts/colocaliseRegion.R --help`.
+
+Likewise, `gwasSummaryPlotter.R` can be used to compare measures provided for summary statistic pairs (e.g. for beta values, p-values, finemapping PIPs from the SuSiE software). Documentation for this script is available by calling: `Rscript ./scripts/gwasSummaryPlotter.R --help`
 
 The structure of the `runColocaliseRegion.job` script provides an example of how the analysis can be configured when running `loopColocaliseRegion.sh`.
 
@@ -51,7 +53,7 @@ Various R packages are required. Running the following in `R` checks for necessa
 
 ```
 #Name required packages
-req_packages <- c("tidyverse","optparse","data.table","R.utils","coloc","susieR", "biomaRt","ggrepel", "egg")
+req_packages <- c("tidyverse","optparse","data.table","R.utils","coloc","susieR", "biomaRt","ggrepel", "patchwork")
 
 #Check for presence of packages
 pkg_missing <- req_packages[!req_packages %in% installed.packages()[,"Package"]]
@@ -79,7 +81,7 @@ Analyses to run should be identified in the `./scripts/set.regions.txt` file. Th
  
 The file should contain a header row (which is ignored) and fields should be tab-delimited. An example of the minimal format for the file, including several possible trait configurations is visualised here:
  
- |traits|locus|
+ |traits|region|
  |---|---|
  |ALS,PD|17,43460501,44865832|
  |PD,SZ	|17,43460501,44865832|
@@ -111,7 +113,7 @@ SZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Schizophrenia|/path/to/sumstats/fil
 The column headers used in the template should be included. Each column indicates the following:
 - ID: Character string indicating trait ID strings set in the `set.regions.txt` input file (see above)
 - type: Character string, either 'quant' or 'cc' indicating respectively whether the trait is quantitative or binary (case control)
-- prop: For trait where `type=cc`, Indicate proportion of data from cases; ignored if type is quant.
+- prop: For trait where `type=cc`, Indicate proportion of data from cases; ignored if type is quant
 - traitSD: For trait where `type=quant`, optionally indicate standard deviation of trait in the population; ignored if type is cc, and should be set to `NA` if unknown. This will be imputed by coloc for quantitative traits when unknown (see: R function `coloc::sdY.est`).
 - p_col: Column name for p-values
 - stat_col: Column name for test statistic, expects column referring to the beta coefficients, if odds ratios given, column must be called 'OR', and these will be converted to the betas. 
@@ -155,10 +157,10 @@ Finemapping results will be returned for all traits defined for a given analysis
 Colocalisation analysis can be performed only for pairs of traits. Therefore, this is currently performed using only the first two traits defined. If more than two traits are supplied for an analysis which is declared to include colocalisation analysis, then steps prior to colocalisation are completed for all traits before subsetting to the first two traits declared.
 
 The main analysis protocol is controlled using the `--runMode` option of `colocaliseRegion.R`. This has 4 possible settings:
-- `doBoth` (the default):  both `coloc.abf` and `coloc.susie` will run, assuming finemapping is successful for both traits supplied to `coloc.susie`.
-- `trySusie`: `coloc.susie` will be used if SuSiE finemapping identifies at least 1 credible set in each trait and `coloc.abf` is returned otherwise.
-- `skipSusie`: only `coloc.abf` will be applied, and processes necessary for `coloc.susie` are skipped (e.g. no need to call to plink and generate the linkage disequilibrium matrix).
-- `finemapOnly`: finemapping is performed for each trait and any colocalisation analyses are skipped.
+- `doBoth` (the default):  both `coloc.abf` and `coloc.susie` will run, assuming finemapping is successful for both traits supplied to `coloc.susie`
+- `trySusie`: `coloc.susie` will be used if SuSiE finemapping identifies at least 1 credible set in each trait and `coloc.abf` is returned otherwise
+- `skipSusie`: only `coloc.abf` will be applied, and processes necessary for `coloc.susie` are skipped (e.g. no need to call to plink and generate the linkage disequilibrium matrix)
+- `finemapOnly`: finemapping is performed for each trait and any colocalisation analyses are skipped
 
 
 ### Outputs
@@ -181,9 +183,11 @@ The `colocalisation.log` file gives some details about each file returned.
 
 _Files for further analysis_
 
-The directory `./coloc/results/<prefix>_coloc/data/` stores .Rds files generated across the main analysis steps that can be readily read into R (using the `readRDS` function) for additional analyses.
+The directory `./coloc/results/<prefix>_coloc/data/` stores primarily .Rds files generated across the main analysis steps that can be readily read into R (using the `readRDS` function) for additional analyses.
 
-- `data/datasets/` contains summary statistics for each trait analysed in the region after snps have been: harmonised across traits, to the reference provided, and then formatted for compatibility with the functions `coloc.susie`, `coloc.abf`, and `runsusie`.
+- `data/datasets/` contains:
+	- coloc-formatted datasets for each trait analysed in the region after snps have been: harmonised across traits, to the reference provided, and then formatted for compatibility with the functions `coloc.susie`, `coloc.abf`, and `runsusie`.
+	- a .csv file of harmonised summary statistics for the region across traits analysed, which can be supplied to the `gwasSummaryPlotter.R` script.
 
 - `data/finemapping/` contains outputs of the `runsusie` function for each trait with at least 1 credible set identified. This can be supplied directly to `coloc.susie`, or further examined in accordance with your needs.
 

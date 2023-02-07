@@ -6,32 +6,40 @@
 #####
 
 #Define a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
-ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMapping=NULL,shapeMapping=NULL,figdir,traits,returnplot=TRUE,
-                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend="Trait: Credible set",nameShapeLegend=NULL,alignment){
+ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,traits=NULL,
+                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend=NULL,nameShapeLegend=NULL,alignment,compareTraits=FALSE){
   
   #Setup y-axis parameters (and where required adjust data)
   if(tolower(yaxis)=="p"){
-    ylab <- bquote(-log[10]~p)
+    ylab <- -log[10]~p
     ystring <- "pvalues"
     dset$pvalues <- -log10(dset$pvalues) #Convert p-values
   } else if (tolower(yaxis)=="z"){
-    dset$z <- abs(dset$beta/dset$SE)
+    #Either calculate Z from beta and se, or grep the column name and ensure abs().
+    if(!"z" %in% tolower(colnames(dset))){
+      dset$z <- abs(dset$beta/dset$SE) 
+    } else {
+      dset$z <- abs(dset[[grep("^(z|Z)$",colnames(dset))]])
+    }
     ylab <- "Absolute Z-score"
     ystring <- "z"
   } else if(tolower(yaxis)=="pip"){
     ylab <-  "PIP"
     ystring <- "variable_prob"
   } else if(tolower(yaxis)=="snp.pp"){
-    ylab <- "Posterior probability of being a shared variant\n"
+    ylab <- "Posterior probability of being a shared variant"
     ystring <- "SNP.PP"
+  } else if(tolower(yaxis)=="beta"){
+    ylab <- ~beta
+    ystring <- "beta"
   } else {
     ylab <- yaxis
-    ystring <- tolower(yaxis)
+    ystring <- yaxis
   }
   
-  if(facetTraits==TRUE){
+  if(facetTraits==TRUE && !is.null(traits)){
     dset$trait<- factor(dset$trait,levels=traits,labels = names(traits))
-  }
+  } 
   
   #Rescale x-axis into MBs or KBs
   if((xlim[2]-xlim[1])>100000){
@@ -45,49 +53,68 @@ ggSummaryplot <- function(yaxis,xstring="pos",xlim,dset=minimal_P1P2_df,colourMa
     xscale_magnitude <- ""
   }
   
+  #Logical to indicate whether the plot is for a measure with negative values - if yes draw a hatched line along 0
+  incNegvals=min(dset[[ystring]])<0
+  
   #Supply string-based aesthetic elements via list
-  aesthetics<- list(x=xstring,y=ystring,colour=colourMapping,shape=shapeMapping) %>%
+  aesthetics<- list(x="pos",y=ystring,colour=colourMapping,shape=shapeMapping) %>%
     lapply(., function(x) if(!is.null(x)){sym(x)})
   
   #Generate plot
-  plot_root <- ggplot(dset,aes(!!!aesthetics))+
+  pos_fig <- ggplot(dset,aes(!!!aesthetics))+
     geom_point()+
     theme_bw()+
     scale_x_continuous(limits = xlim,
                        breaks = scales::breaks_extended(n=4), 
-                       labels = scales::label_number(scale = 1 / xscale,accuracy = 0.1) #Scale axis magnitude dynamically
+                       labels = scales::label_number(scale = 1 / xscale,accuracy = 0.01) #Scale axis magnitude dynamically
     )+ 
-    labs(y=ylab,x=paste0("GRCh",alignment," genomic position (",target_region,")",xscale_magnitude))
+    labs(y=bquote(.(ylab)),x=paste0("GRCh",alignment," genomic position",xscale_magnitude,"\n(",target_region,")"))+
+    { if(incNegvals) geom_hline(yintercept = 0,lty=2) }+
+    { if(facetTraits) facet_wrap(~trait, nrow = facetNrow) }+ #Optionally add faceting
+    
+    { if(!is.null(colourMapping)){  #Optionally add colour aesthetic
+      list(scale_colour_manual(na.value = "black", values=ggpalette,
+                               breaks=levels(dset[[which(colnames(dset)==colourMapping)]])
+      ),
+      guides(color=guide_legend(title=nameColourLegend,order=1))) } } +
+    
+    { if(!is.null(shapeMapping)){ #Optionally add shape aesthetic 
+      list(scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])),
+                              guides(shape=guide_legend(title=nameShapeLegend,order=2))) } }
   
-  if(facetTraits==TRUE){
-    plot_root <- plot_root +
-      facet_wrap(~trait, nrow = facetNrow)
-  }
+  if(compareTraits){
+    if(class(dset$trait)=="factor") traits<- levels(dset$trait) else traits<- unique(dset$trait)
+    aesthetics$x <- sym(traits[1])
+    aesthetics$y <- sym(traits[2])
+    
+    lims <- range(dset[[ystring]])  
+    
+    traitXY_fig<- dset %>%
+      dplyr::select(all_of(c("snp","trait",ystring,colourMapping))) %>%
+      pivot_wider(values_from = all_of(ystring),names_from = "trait") %>%
+      # mutate(var=factor(ystring,labels=ifelse(class(ylab)=="formula",deparse(ylab),gsub(" ","~",ylab)))
+      #        ) %>%
+      ggplot(.,aes(!!!aesthetics))+
+      annotate("rect",xmin=-Inf,xmax=Inf,ymin=-Inf,ymax=Inf,alpha=0.1,colour="azure4")+
+      lims(x=lims,y=lims)+
+      labs(x=bquote({.(ylab)[~(.(traits[1]))]},splice=TRUE),y=bquote({.(ylab)[~(.(traits[2]))]},splice=TRUE))+
+      geom_point()+
+      theme_bw()+
+      #facet_wrap(~var,labeller=label_parsed)+ #Alternatively, use facet wrap (with mutate), for labelling based on a facet strip
+      { if(incNegvals) list(geom_hline(yintercept = 0,lty=2),
+                            geom_vline(xintercept = 0,lty=2))}+
+      { if(!is.null(colourMapping)){  #Optionally add colour aesthetic 
+        list(scale_colour_manual(na.value = "black", values=ggpalette,
+                                 breaks=levels(dset[[which(colnames(dset)==colourMapping)]])
+        ),
+        guides(color=guide_legend(title=nameColourLegend,order=1))) } } +
+      { if(!is.null(shapeMapping)){ #Optionally add shape aesthetic 
+        list(scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]]),
+                                guides(shape=guide_legend(title=nameShapeLegend,order=2)))) } }
+    
   
-  #Add Colouring if specified
-  if(!is.null(colourMapping)){
-    plot_root <- plot_root +
-      scale_colour_manual(na.value = "black", values=ggpalette,
-                          breaks=levels(dset[[which(colnames(dset)==colourMapping)]])
-      )+
-      guides(color=guide_legend(title=nameColourLegend,order=1))
-  }
-  
-  #Add shapes if specified
-  if(!is.null(shapeMapping)){
-    plot_root <- plot_root +
-      #scale_shape_manual(na.value = 19, values=17,breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
-      scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])
-      )+
-      guides(shape=guide_legend(title=nameShapeLegend,order=2))
-  }
-  
-  #Return either the plot itself or ggsave directly, according to return plot option
-  if(returnplot){
-    return(plot_root)
+    return(list(bpfigure=pos_fig,traitxy_figure=traitXY_fig))
   } else {
-    #GGsave returns character string indicating where file was written
-    ggsave(file.path(figdir,paste0(paste0(traits,collapse="_"),"_",tolower(yaxis),"_summaryplot.pdf")),
-           plot_root,device="pdf",units="mm",width=175,height=75)
+    return(list(bpfigure=pos_fig))
   }
 }

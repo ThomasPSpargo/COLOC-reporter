@@ -88,7 +88,7 @@ dependencies:
   - make=4.3=hd18ef5c_1
   - ncurses=6.3=h27087fc_1
   - openblas=0.3.21=pthreads_h320a7e8_3
-  - openssl=3.0.7=h0b41bf4_1
+  - openssl=3.0.7=h0b41bf4_2
   - pandoc=2.19.2=h32600fe_1
   - pango=1.50.12=hd33c08f_1
   - pcre2=10.40=hc3806b6_0
@@ -174,6 +174,7 @@ dependencies:
   - r-nlme=3.1_161=r42hac0b197_0
   - r-openssl=2.0.5=r42habfbb5e_0
   - r-optparse=1.7.3=r42hc72bb7e_1
+  - r-patchwork=1.1.2=r42hc72bb7e_1
   - r-pillar=1.8.1=r42hc72bb7e_1
   - r-pkgconfig=2.0.3=r42hc72bb7e_2
   - r-plogr=0.2.0=r42hc72bb7e_1004

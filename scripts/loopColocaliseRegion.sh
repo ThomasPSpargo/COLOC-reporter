@@ -9,7 +9,7 @@ LDREFERENCE=${MAIN}/ld_reference/EUR_phase3_chr		#Location and prefix for per-ch
 GWASinfo=${MAIN}/scripts/GWAS_samples.txt			#Input file detailing configuration of traits and GWAS summary statistic inputs
 plinkpath=plink										#If plink executable cannot be automatically identified by system, specify the relevant file path.
 
-scriptpath=${MAIN}/scripts/colocaliseRegion.R		#Path identifying the rscript to run when submitting job
+scriptpath=${MAIN}/scripts		#Path identifying the the location of scripts to run in each job
 comparisons=${MAIN}/scripts/set.regions.txt			#Input file dictating phenotype pairings and loci to analyse
 
 

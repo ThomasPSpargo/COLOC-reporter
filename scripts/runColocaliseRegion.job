@@ -38,23 +38,37 @@ cd  $tmp_dir
 
 #Print to log that a new analysis loop has begun
 printf "########################\nAnalysing traits: ${traits} at locus: ${locus}\n"
-	
 
-Rscript $scriptpath \
+echo "Running main colocalisation analysis script"
+	
+#This script harmonises summary statistics, performs finemapping, and then colocalisation analysis
+Rscript ${scriptpath}/colocaliseRegion.R \
 		--LDreference $LDREFERENCE \
 		--plink $plinkpath \
 		--set_locus $locus \
 		--runMode $runMode \
-		--GWASsumplots $sumplots \
-		--GWASsumplots_onefile $sumplots_onefile \
 		--gene_tracks 40 \
 		--restrict_nearby_gene_plotting_source "HGNC Symbol" \
 		--force_matrix FALSE \
 		--out $outpath \
 		--traits $traits \
 		--GWASconfig ${GWASinfo} \
-		--helperFunsDir "$(dirname ${scriptpath})/helper_functions"
-
+		--helperFunsDir "${scriptpath}/helper_functions"
+		
+echo "Running GWAS summary figure script"
+		
+#This script takes harmonised summary statistics as input and plots comparisons across the measures indicated in --GWASsumplots across pairs of GWAS summary statistics
+Rscript ${scriptpath}/gwasSummaryPlotter.R \
+		--traits $traits \
+		--harmonisedSumstats ${outpath}_coloc/data/datasets/harmonised_sumstats.csv \
+		--GWASconfig ${GWASinfo} \
+		--GWASsumplots $sumplots \
+		--GWASsumplots_onefile $sumplots_onefile \
+		--GWASsumplots_incfinemapping TRUE \
+		--helperFunsDir "${scriptpath}/helper_functions" \
+		--outdir "${outpath}_coloc/plots" 
+		
+	
 
 
 
