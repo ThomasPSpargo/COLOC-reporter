@@ -26,6 +26,16 @@ option_list = list(
               help="Character string, any of 'trySusie', 'skipSusie', 'doBoth','finemapOnly'.\nIf 'doBoth', both coloc.abf and coloc.susie will attempt to run.\nIf 'trySusie' coloc.susie will be used if SuSiE finemapping identifies at least 1 credible set in each trait and coloc.abf is returned otherwise.\nIf 'skipSusie', only coloc.abf will be applied, and processes necessary for coloc.susie are skipped (e.g. no need to call to plink and generate LD matrix); the LD reference will however still still used for SNP alignment.\nIf 'finemapOnly' then univariate finemapping is performed which can be applied across any number of traits. Note however that only snps in common across all traits and the reference panel will be retained. Therefore, for colocalisation analysis it may be preferable to harmonise summary statistics used in colocalisation analysis pairwise."),
   make_option("--force_matrix", action="store", default=FALSE, type='logical',
               help="If TRUE, the LD matrix will always be recomputed using PLINK. If FALSE, the default, the LD matrix will only be computed if the expected ld_matrix.snplist and ld_matrix.ld files are absent from the <output>/LDmatrix directory."),
+  make_option("--finemapQC_handleBetaFlips", action="store", default="drop", type='character',
+              help="The SuSiE kriging_rss function is used to check whether observed Z-scores (calculated from beta and SE) correspond with expected Z-scores based on information from the LD matrix and other SNPs. This check indicates if any SNP effect estimates appear like they may be reversed. Set this option to 'flip' to automatically reverse the direction of betas with test statistics identified as inverted on a trait-by-trait basis, or to 'drop' to remove them from all traits across analyses; the option defaults to 'drop'. The check for potentially flipped alleles will be performed but the data used for subsequent analysis will be unchanged if any other strings are passed to this option. Note that the setting applied here will affect both the finemapping and colocalisation analysis steps, but will only be applied in circumstances when SuSiE finemapping is performed."),
+  make_option("--finemap_CScoverage", action="store", default=0.95, type='numeric',
+              help="Numeric between 0 and 1 to indicate the credible set threshold to use for finemapping; defaults to 0.95, which returns 95% credible sets."),
+  make_option("--priors_susie", action="store", default=NULL, type='numeric',
+              help="Set a prior probability that a snp is causal for susie finemapping (equivalent to coloc p1 or p2). Set to NULL by default which corresponds to the default for the coloc::runsusie wrapper around susie_rss; this is not usual default for susie_rss - see coloc::runsusie documentation for details."),
+  make_option("--priors_coloc.abf", action="store", default="1e-4,1e-4,1e-5", type='character',
+              help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.abf function; default values are '1e-4,1e-4,1e-5' which corresponds with the coloc.abf default settings."),
+  make_option("--priors_coloc.susie", action="store", default="1e-04,1e-04,5e-06", type='character',
+              help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.susie function; default values are '1e-04,1e-04,5e-06' which corresponds with the coloc.susie default settings (passed through to coloc.bf_bf function)."),
   make_option("--out", action="store", default="./COLOC-reporter", type='character',
               help="Path and prefix for directory in which to return all outputs. Defaults to ./COLOC-reporter. When running multiple analyses, unique output directories are essential for tidy file organisation."),
   make_option("--genomeAlignment", action="store", default=37, type='numeric',
@@ -51,7 +61,7 @@ suppressPackageStartupMessages({
   library(coloc)
   library(susieR)
   library(biomaRt)    #For ensembl library
-  library(ggrepel)    #For ensembl library
+  library(ggrepel)
   library(patchwork)     #arranging summary plot
 })
 
@@ -71,16 +81,24 @@ if(test==TRUE){
   opt$runMode <- 'doBoth'
   opt$force_matrix <- FALSE
   
+  opt$finemapQC_handleBetaFlips <- 'drop'
+  opt$finemap_CScoverage <- 0.95
+  
   opt$gene_tracks <- 40
   opt$restrict_nearby_gene_plotting_source <- "HGNC Symbol"
   opt$genomeAlignment <- 37
   
   opt$helperFunsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
   
+  opt$priors_coloc.abf <- "1e-4,1e-4,1e-5"
+  opt$priors_coloc.susie <-"1e-04,1e-04,5e-06"
+  
 }
 
 #Extract names of traits compared, first dropping file path, and then any prefixes indicated by a preceding underscore
 traits <- strsplit(opt$traits,",")[[1]]
+
+coveragePcent<- paste0(opt$finemap_CScoverage*100,"%")
 
 #Read in the configuration options
 GWASconfig<- fread(opt$GWASconfig)
@@ -92,13 +110,17 @@ names(traits) <- GWASconfig[traits,on="ID"]$traitLabel
 opt$out <- paste0(opt$out,"_coloc")
 if(!dir.exists(opt$out)){dir.create(opt$out,recursive = TRUE)}
 
-#Set up directories in which to return tables and figures
+#Set up directories across which outputs are returned
 figdir <- file.path(opt$out,"plots")
 if(!dir.exists(figdir)){dir.create(figdir)}
 tabdir <- file.path(opt$out,"tables")
 if(!dir.exists(tabdir)){dir.create(tabdir)}
 datadir <- file.path(opt$out,"data")
 if(!dir.exists(datadir)){dir.create(datadir)}
+if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
+  finemapQCdir <- file.path(opt$out,"finemapQC")
+  if(!dir.exists(finemapQCdir)){dir.create(finemapQCdir)}
+}
 
 
 logfile <- file.path(opt$out,'colocalisation.log')
@@ -145,9 +167,12 @@ print(opt)
 cat("\n######\n### Setup\n######\n\n")
 
 cat("All outputs will be returned in the directory: ", opt$out,"\n")
-cat("All figures are returned in the subdirectory: ",basename(figdir),"\n")
-cat("with tabular summaries in the subdirectory: ",basename(tabdir),"\n")
-cat("and .Rds files with resources from each main analysis step in the subdirectory: ",basename(datadir),"\n\n")
+cat("Figures from the main analysis steps are returned within the subdirectory: ",basename(figdir),"\n")
+cat("Tabular summaries are in the subdirectory: ",basename(tabdir),"\n")
+if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
+  cat("Finemap quality control checks are in the subdirectory: ",basename(finemapQCdir),"\n")
+}
+cat("Resources from each main analysis step are in the subdirectory: ",basename(datadir),"\n\n")
 
 sink()
 
@@ -447,14 +472,246 @@ Genes$end_window<-Genes$end_position+gene_window
 # Do main Susie steps
 if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   
+  sink(file = logfile, append = T)
+  cat("\n######\n### SuSiE finemapping quality control\n######\n")
+  sink()
+  
+  #Nominal exclusion boundary [option under-testing, may not make sense]
+  #opt$finemapQC_dropZOutliers <- NA#3
+  
+  susieQC <- mapply(function(dset,trait){
+      ## Compare observed z-scores with LD matrix [warning thrown when LD matrix is not semi-definite...]
+      z_sc <- dset$beta/dset$SE #Get z-scores
+      
+      # #Estimate s with all available methods - indicates compatibility between sumstats and reference
+      checkMthd<- c("null-mle", "null-partialmle", "null-pseudomle")
+      checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
+      
+      #Add extra info for writing to file
+      checkTofile<- c("trait"= unname(trait), "any_flips"=FALSE,round(checkLD,5))
+      
+      #Write finemapping summary to a file and write without names if file exists already
+      LDcheckFile<- file.path(finemapQCdir,"check_sumstat_LDconsistency.csv")
+      write.table(t(checkTofile),
+                  file=LDcheckFile,sep = ",", row.names=FALSE,col.names = !file.exists(LDcheckFile),append = file.exists(LDcheckFile))
+      
+      
+      ### Check for allele flip issues
+      #Compare observed and expected Z-scores
+      z_compare<- kriging_rss(
+        z=z_sc,
+        R=dset$LD,
+        n=max(dset$N),
+        r_tol = 1e-08,
+        s = checkLD[[1]]
+      )
+      zPlot<- z_compare$plot+ #Extract plot
+      labs(caption='possibly flipped variants are marked in red')
+      
+      # if(!is.na(opt$finemapQC_dropZOutliers)){
+      #   
+      #   #Add hatched lines to plot at exclusion boundaries
+      #   zPlot <- zPlot+  
+      #     geom_abline(slope=1,intercept=opt$finemapQC_dropZOutliers,lty=2)+
+      #     geom_abline(slope=1,intercept=-opt$finemapQC_dropZOutliers,lty=2)
+      #   
+      #   ## Compare the difference between observed and expected z-scores
+      #   diffs<-  with(z_compare$conditional_dist,
+      #                 abs(z-condmean))
+      #   exclIndex<- diffs>opt$finemapQC_dropZOutliers #Identify index positions for 'out of bounds' Z-score snps
+      #   
+      # } else {
+      #  exclIndex = NULL
+      # }
+      
+      #Determine snps with betas that may be flipped; this check corresponds with the one implemented by internally by kriging_rss
+      possFlipped<- with(z_compare$conditional_dist,
+                         logLR>2 & abs(z)>2)
+      
+      if(sum(possFlipped)>0){ #If any outliers replot the figure in a circumstance where these are flipped
+        z_sc_flip <-z_sc
+        z_sc_flip[possFlipped]<- -z_sc_flip[possFlipped]
+        
+        #Repeat s-estimation after flips
+        checkLD_flipped<- sapply(checkMthd,estimate_s_rss,z=z_sc_flip, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
+        
+        checkTofile<- c("trait"= unname(trait), "any_flips"=TRUE,round(checkLD_flipped,5)) #Add extra info for writing to file
+        
+        #Write finemapping summary to a file and write without names if file exists already
+        LDcheckFile<- file.path(finemapQCdir,"check_sumstat_LDconsistency.csv")
+        write.table(t(checkTofile),
+                    file=LDcheckFile,sep = ",",row.names=FALSE,col.names = !file.exists(LDcheckFile),append = file.exists(LDcheckFile))
+        
+        #Compare observed and expected Z-scores
+        z_compare_flip <- kriging_rss(
+          z=z_sc_flip,
+          R=dset$LD,
+          n=max(dset$N),
+          s = checkLD_flipped[[1]] 
+        )
+        zPlotFlip<- z_compare_flip$plot #Extract plot
+        
+        # if(!is.na(opt$finemapQC_dropZOutliers)){ #If removing extreme values
+        #   #Plot the boundary lines
+        #   zPlotFlip <- zPlotFlip +
+        #     geom_abline(slope=1,intercept=opt$finemapQC_dropZOutliers,lty=2)+
+        #     geom_abline(slope=1,intercept=-opt$finemapQC_dropZOutliers,lty=2)
+        #   
+        #   ## Compare the difference between observed and expected z-scores
+        #   diffs_flipped<-  with(z_compare_flip$conditional_dist,
+        #                         abs(z-condmean))
+        #   exclIndex_flip<- diffs_flipped>opt$finemapQC_dropZOutliers #Identify index positions for 'out of bounds' Z-score snps
+        # } else {
+        #   exclIndex_flip = NULL
+        # }
+        
+        #Patchwork combine with and measured flips with and without encoding 
+        zPlot<- zPlot+labs(subtitle = "Original encoding")+
+          zPlotFlip+labs(subtitle = "With reversal of putative statistic flips")+theme(axis.title.y = element_blank())
+      } #else {
+        #exclIndex_flip = NULL
+      #}
+      
+      #Save the plot
+      z_check_outpath <- file.path(finemapQCdir,paste0("Z_score_alignment_",trait,".pdf"))
+      ggsave(z_check_outpath,zPlot,device="pdf",units="mm",width=150,height=100)
+      
+      #Report relevant messages to the logfile
+      sink(file = logfile, append = T)
+      cat("\nQuality control for ",trait,":\n",sep="")
+      cat(sum(possFlipped),ifelse(sum(possFlipped)==1," SNP was"," SNPs were")," flagged for potentially flipped allele encoding", ifelse(sum(possFlipped)>0," (marked red on the diagnostic plot returned in the finemapQC directory).\n",".\n"),sep="")
+      # if(!is.na(opt$finemapQC_dropZOutliers)){
+      #   cat(sum(exclIndex),ifelse(sum(exclIndex)==1,"SNP was","SNPs were"),"flagged with high discrepancy between expected and observed Z-scores.\n")
+      #   if(!is.null(exclIndex_flip)) cat("After repeating check with flipped allele encoding,",sum(exclIndex_flip), "would remain as Z-score outliers.\n")
+      # }
+      sink()
+      
+      # #If flipping is to be performed, exclude based on outliers after the flipping stage
+      # if(opt$finemapQC_handleBetaFlips=="flip" && !is.null(exclIndex_flip)){
+      #   exclIndex<- exclIndex_flip
+      # }
+      
+      #if(is.null(exclIndex)){ #If nothing to exclude, set a vector of FALSE values
+        exclIndex <- rep(FALSE,length(dset$snp))
+      #}
+      
+     
+      return(list(conditional_dist=z_compare$conditional_dist,toFlip=possFlipped,toExclude=exclIndex))
+      
+  },sums.region,traits,SIMPLIFY = FALSE)
+  
+  sink(file = logfile, append = T)
+  cat("\nGlobal quality control:\nTests of consistency between each set of sumstats and LD matrix by each method available in SuSiE estimate_s_rss function are written to: check_sumstat_LDconsistency.csv\n")
+  cat("Comparisons between observed and expected z-scores are visualised per trait in the file(s): Z_score_alignment_<trait>.pdf. If SuSiE identifies any credible sets, these data will be replotted with colouring to mark credible sets assigned.\n\n")
+  sink()
+  
+  #Across traits, identify if any positions betas are indicated for flipping.
+  #If flipping, this will be handled per-trait, if dropping, this will be done by global index
+  globalFlips <- Reduce(`|`, lapply(susieQC,function(x) x$toFlip))
+  
+  #Across traits, identify which positions have been identified as outliers and remove problematic SNPs from all traits
+  #This currently does nothing, but object is assigned to prevent any downstream errors
+  globalExclude<- Reduce(`|`, lapply(susieQC,function(x) x$toExclude))
+  
+  #If set, adjust each sumstats to remove or flip outlier records
+  if( 
+    ( opt$finemapQC_handleBetaFlips %in% c("drop","flip") && any(globalFlips) )# ||
+    #( !is.na(opt$finemapQC_dropZOutliers) && any(globalExclude) ) 
+  ){
+    
+    #Logical indicating whether the exclusion step is to be conducted; only if there are records to exclude and if this wouldnt remove ALL records
+    #doExcludeStep<- !is.na(opt$finemapQC_dropZOutliers) && any(globalExclude) && any(!globalExclude)
+    
+    #Logical tests indicating how allele flipping steps should proceed (i.e. with flipping, or with dropping)
+    doFlipStep <- opt$finemapQC_handleBetaFlips=="flip" && any(globalFlips)
+    doFlipDROPStep <- opt$finemapQC_handleBetaFlips=="drop" && any(globalFlips) && any(!globalFlips)
+    
+    opt$finemapQC_handleBetaFlips %in% c("drop","flip") && any(globalFlips)
+    
+    if(doFlipStep){
+      excludeMSG <- "after flipping betas"
+    } else {
+      excludeMSG <- ""
+    }
+    
+    #Message about which steps are to be conducted
+    sink(file = logfile, append = T)
+    if(doFlipStep){ cat("Summary statistic betas will be flipped per-trait for all SNPs indicated to have reversed allele order.\n")
+    } else if(doFlipDROPStep){ cat("SNPs identified as likely to have flipped test statistics in any trait will be removed...\n") }
+    #if(doExcludeStep) { cat("SNPs identified with extreme Z-score outliers",excludeMSG,"in any trait will be removed...\n") } 
+    sink()
+    
+    #Across datasets flip betas/drop SNPs according to settings
+    sums.region <- mapply(function(dset,QC,trait,globalExcl,flipDrop){
+      
+      #Flip beta coefficients detected as reversed in the given summary statistics
+      if(doFlipStep){
+        
+        #Flip the beta for snps marked as candidates for flipping
+        dset$beta[QC$toFlip] <- -dset$beta[QC$toFlip]
+      } else if(doFlipDROPStep){
+        
+        #With custom function, remove snps that are marked as candidates for flipping
+        dset<- dropSNPs(dset,flipDrop)
+        
+        #If dropping has been performed, then filter the the second exclusion step to ensure correct indexing
+        globalExcl<- globalExcl[!flipDrop]
+      }
+      
+      # if(doExcludeStep){
+      #   #With custom function, remove snps that are marked as candidates for flipping
+      #   dset<- dropSNPs(dset,QC$globalExcl)
+      # }
+      
+      return(dset)
+    }
+    ,sums.region,susieQC,traits,MoreArgs = list(globalExcl=globalExclude,flipDrop=globalFlips),SIMPLIFY = FALSE)
+    
+    #Save IDs for SNPs that have been dropped to file (if any)
+    isDropped<- !snplist %in% sums.region[[1]]$snp
+    if(any(isDropped)){
+      write(snplist[isDropped],
+            file=file.path(finemapQCdir,"FinemapQC_droppedSNPs.txt")
+      )}
+    
+    if(#doExcludeStep || 
+      doFlipDROPStep){ #Report message indicating how subsetting
+      sink(file = logfile, append = T)
+      cat("A total of",length(sums.region[[1]]$snp),"SNPs remain.\n")
+      if(length(sums.region[[1]]$snp)==0){cat("Analysis stopped as no SNPs remain.\n");stop("Analysis stopped as no SNPs remain.")}
+      sink()
+    }
+  }
+  
+  
+  sink(file = logfile, append = T)
+  cat("\n######\n### SuSiE finemapping results\n######\n\n")
+  sink()
+  
   #Run SuSiE across datasets and generate report summaries
   #A guideline for N is specified since this is highly recommended
   
   SusieFail <- logical(0) #SusieFail indicates if susie was successful across traits: TRUE indicates an error was thrown
   susie <- mapply(function(dset,trait){
     tryCatch({
+      
+      # #Option to apply prior variance as per coloc-defaults, per runsusie documentation
+      # if(dset$type=="cc"){ 
+      #   prior_variance = 0.2^2
+      # } else if (dset$type=="quant" && !is.null(dset$sdY)){   #use sdY directly
+      #   prior_variance = (0.15/dset$sdY)^2
+      # } else if (dset$type=="quant" && is.null(dset$sdY)){    #or impute with coloc function
+      #   prior_variance = (0.15/coloc:::sdY.est(dset$varbeta,dset$MAF,n=mean(dset$N)))^2
+      # } else {
+      #   prior_variance = NULL
+      # }
+      
+      #Option to estimate residual variance could be true per the susie tutorials, However, cf:
+      #https://github.com/stephenslab/susieR/issues/162
+      #Therefore, agreeing with coloc defaults, estimate_residual_variance= FALSE always.
+      
       #Run Susie
-      finemap<- runsusie(dset,n=max(dset$N))
+      finemap<- runsusie(dset,n=max(dset$N),estimate_residual_variance = FALSE,coverage=opt$finemap_CScoverage,p=opt$priors_susie)
       
       #Save the susie results as a resource
       finemappath<- file.path(datadir,"finemapping")
@@ -479,9 +736,9 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       })
   },sums.region,traits,SIMPLIFY = FALSE)
   
-  sink(file = logfile, append = T)
-  cat("\n######\n### SuSiE fine-mapping results\n######\n\n")
-  sink()
+  
+  
+  
   
   ######
   ### Summarise susie results across datasets
@@ -492,72 +749,106 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       return(list(csFound=FALSE,sets=data.frame(snp=snplist,cs=factor(NA_character_),
                                                               variable_prob=NA_real_)))
     } else { #Otherwise, produce a summary!
-    
-    #Drop the list elements of basedata which cannot be converted to a dataframe, and then convert
-    basedata$s <- basedata$type <- basedata$LD <- basedata$sdY <- NULL
-    basedata <- as.data.frame(basedata)
-    
-    sum_susie <- summary(susie.fit)
-    csFound<- !is.null(sum_susie$cs) #Logical statement to pass through indicating TRUE if a CS has been identified
-    
-    ##### Generate summary table for PIP of SNPs
-    sets<- sum_susie$vars #[sum_susie$vars$cs!=-1,] #Extract all snps
-    sets<- cbind(sets,basedata[sets$variable,c("snp","chr","pos","pvalues","beta","SE")]) #Add relevant columns from GWAS sumstats
-    
-    #Save PIP summaries to file
-    sets_outpath<- file.path(tabdir,paste0("susie_snp_summary_",trait,".csv"))
-    write.table(sets,file=sets_outpath,sep = ",",row.names=FALSE)
-    tab_out<- paste0("PIP summaries for SNPs for ",trait," are tabulated in:\n", basename(sets_outpath),"\n") #Info string
-    
-    
-    
-    ### Plot the pip summaries alongside snp p-values
-    
-    #Mutate data for plotting
-    sets <- sets %>%
-      mutate(cs = if_else(cs==-1,NA_real_,cs),
-             cs = as.factor(cs),
-             thresh = if_else(!is.na(cs),as.character(snp),""))
-    
-    if(csFound){ #if CS are found
-      colourMapping <- sym("cs") #Dynamically set colour attribute 
       
-      #Replicate Susie plot legend labelling
-      CSlen<- sapply(susie.fit$sets$cs,length)
-      CSmin<- susie.fit$sets$purity$min.abs.corr
-      levels(sets$cs) <- paste0(names(susie.fit$sets$cs),": C=",CSlen,"/R=",round(CSmin,3))
+      ## Extract initial summary elements from susie.fit
+      sum_susie <- summary(susie.fit)
+      csFound<- !is.null(sum_susie$cs) #Logical statement to pass through indicating TRUE if a CS has been identified
+      sets<- sum_susie$vars #[sum_susie$vars$cs!=-1,] #Extract all snps
+    
+      ##Perform a final consistency check for the final dataset; return this alongside the output report
+      # additionally, keep aside the LD matrix for checking LD and Z-score consistency
+      keepLD<- basedata$LD
+      finalConsistencyCheck<- estimate_s_rss(method="null-mle",z=basedata$beta/basedata$SE, R=keepLD, n=max(basedata$N), r_tol = 1e-08)
       
-    } else {
-      colourMapping = NULL
-    }
-    
-    #Use trait name as plot title if possible
-    if(!is.null(names(trait))){
-      title <- names(trait)
-    } else {
-      title <- trait
-    }
-    
-    xScale<- xScaler(reg_range[["stop"]]-reg_range[["start"]])
-    
-    pips<- ggplot(sets,aes(x=pos,y=variable_prob,colour=!!colourMapping))+
-      geom_point() +
-      theme_bw()+
-      theme(plot.title = element_text(hjust=0.5))+
-      scale_x_continuous(breaks = scales::breaks_extended(n=4), 
-                         labels=scales::label_number(scale = 1 / xScale$xscale,accuracy = 0.01) #Scale axis magnitude dynamically
-      )+ 
-      labs(y="PIP",x=paste0("GRCh",opt$genomeAlignment," genomic position",xScale$xscale_magnitude,"\n(",target_region,")"),title=title)+
-      if(!is.null(colourMapping)){
-        list(scale_colour_manual(na.value = "black", values=ggpalette,breaks=levels(sets$cs)),
-             guides(color=guide_legend(title="Credible set")))
+      ## Format the dataset subsetting to only the list elements which are snpwise values
+      basedata<- as.data.frame(basedata[sapply(basedata,length)==length(basedata$snp)])
+      
+      #Combine sets object with the basedata
+      sets<- cbind(sets,basedata[sets$variable,c("snp","chr","pos","pvalues","beta","SE")]) #Add relevant columns from GWAS sumstats
+      
+      #Save PIP summaries to file
+      sets_outpath<- file.path(tabdir,paste0("susie_snp_summary_",trait,".csv"))
+      write.table(sets,file=sets_outpath,sep = ",",row.names=FALSE)
+      tab_out<- paste0("PIP summaries for SNPs for ",trait," are tabulated in:\n", basename(sets_outpath),"\n") #Info string
+      
+      ### Plot the pip summaries alongside snp p-values
+      
+      #Mutate data for plotting
+      sets <- sets %>%
+        mutate(cs = if_else(cs==-1,NA_character_,paste0("L",cs)),
+               thresh = if_else(!is.na(cs),as.character(snp),""))
+      
+      if(csFound){ #if CS are found
+        colourMapping <- sym("cs") #Dynamically set colour attribute 
+        
+        #Replicate Susie plot legend labelling
+        CSlen<- sapply(susie.fit$sets$cs,length)
+        CSmin<- susie.fit$sets$purity$min.abs.corr
+        csLabs<- paste0(names(CSlen),": C=",CSlen,"/R=",round(CSmin,3))
+        
+        #Explicit conversion to factor for the CS to ensure correct labelling
+        sets$cs <- factor(sets$cs,levels=names(CSlen),labels=csLabs)
+        
+      } else {
+        colourMapping = NULL
       }
-    
-    ggsave(file.path(figdir,paste0("susie_PIP_",trait,".pdf")),pips,device="pdf",units="mm",width=150,height=150)
-    
-    if(csFound){
+      
+      
+      #Use trait name as plot title if possible
+      if(!is.null(names(trait))){
+        title <- names(trait)
+      } else {
+        title <- trait
+      }
+      
+      xScale<- xScaler(reg_range[["stop"]]-reg_range[["start"]])
+      
+      pips<- ggplot(sets,aes(x=pos,y=variable_prob,colour=!!colourMapping))+
+        geom_point() +
+        theme_bw()+
+        theme(plot.title = element_text(hjust=0.5))+
+        scale_x_continuous(breaks = scales::breaks_extended(n=4), 
+                           labels=scales::label_number(scale = 1 / xScale$xscale,accuracy = 0.01) #Scale axis magnitude dynamically
+        )+ 
+        labs(y="PIP",x=paste0("GRCh",opt$genomeAlignment," genomic position",xScale$xscale_magnitude,"\n(",target_region,")"),title=title)+
+        if(!is.null(colourMapping)){
+          list(scale_colour_manual(na.value = "black", values=ggpalette,breaks=levels(sets$cs)),
+               guides(color=guide_legend(title="Credible set")))
+        }
+      
+      ggsave(file.path(figdir,paste0("susie_PIP_",trait,".pdf")),pips,device="pdf",units="mm",width=150,height=150)
+      
+      
+      if(csFound){
+        
+        ## Visualise CS-assigned SNPs against the Obs/Exp SNP matrix.
+        
+        #Generate the obs vs exp Z-scores
+        z_compare_cs <- kriging_rss(
+          z=basedata$beta/basedata$SE,
+          R=keepLD,
+          n=max(basedata$N),
+          s=finalConsistencyCheck
+        )
+        
+        #Combine the basedata with the z_compare results (ensuring that the row order is consistent), then add credible sets matched by snp.
+        z_compare_csplot<- cbind(basedata,z_compare_cs$conditional_dist) %>%
+          left_join(sets[c("snp","cs")],by="snp") %>%
+          mutate(alpha=if_else(!is.na(cs),1,0)) %>%
+          ggplot(.,aes(x=condmean,y=z,colour=!!colourMapping,alpha=alpha))+
+          geom_point() +
+          theme_bw()+
+          labs(y = "Observed z scores", x = "Expected value") +
+          geom_abline(intercept = 0, slope = 1) +
+          scale_colour_manual(na.value = "black", values=ggpalette,breaks=levels(sets$cs))+
+          scale_alpha_continuous(range=c(0.2,1))+
+          guides(color=guide_legend(title="Credible set"),alpha="none")
+        
+        ggsave(file.path(finemapQCdir,paste0("Z_score_alignment",trait,"_withCS.pdf")),z_compare_csplot,device="pdf",units="mm",width=150,height=150)
+      
       ##### Create summary file    
       finemap_summary <- data.frame(CS_span = NA,
+                                    LD_Zscore_consistency=finalConsistencyCheck,
                                     beta_maxSNP = basedata$snp[which(basedata$beta==max(basedata$beta))],
                                     p_minSNP = basedata$snp[which(basedata$pvalues==min(basedata$pvalues))],
                                     TopPIPsnp = NA,
@@ -605,13 +896,14 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
                   file=finemapSummary,sep = ",",row.names=FALSE,col.names = !file.exists(finemapSummary),append = file.exists(finemapSummary))
       
     } else {
-      finemap_summary <- "No 95% confidence credible sets could be identified"
+      finemap_summary <- paste("No",coveragePcent," credible sets could be identified")
     }
     
     #Sink directly to file
     sink(file = logfile, append = T)
     cat("------------------------------\n")
-    cat("SuSiE finemap result for", trait,":\n")
+    cat("SuSiE finemap result for ", trait,":\n",sep="")
+    cat("Model fitted using", susie.fit$niter,"iterations, and converged =",susie.fit$converged,"\n\n")
     print(finemap_summary)
     cat("\n",tab_out)
     cat("------------------------------\n")
@@ -636,29 +928,29 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
     ######
     ### Check alignment of Beta and LD, may lead to issues with LD matrix convergence if not aligned in the same direction
     ######
-    pdf(file=file.path(figdir,"Beta_LD_alignment.pdf"),width=7,height=7)
+    pdf(file=file.path(finemapQCdir,"Beta_LD_alignment.pdf"),width=7,height=7)
     lapply(sums.region,check_alignment)
     dev.off()
     
     sink(file = logfile, append = T)
     cat("The SuSiE finemapping step returned an error for at least one trait (see above).\n")
-    cat("Figures have been generated in 'Beta_LD_alignment.pdf', check these to compare alignment of summary statistic betas and the LD matrix.\nSee https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
+    cat("Please check the resources returned in the finemapQC directory to evaluate the  alignment of summary statistic test statistics against those expected given the LD matrix.\nSee also https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
     sink()
     
   } else if(!all(sapply(susie_rep[1:2],function(x)x$csFound))){ #Return this message on the basis of only the first two traits
     sink(file = logfile, append = T)
-    cat("Credible sets were not identified for at least one trait, therefore coloc.susie cannot be utilised.\n")
+    cat(coveragePcent," credible sets were not identified for at least one of ",paste0(traits[1:2],collapse=" & "),". Therefore, coloc.susie was not used.\nAdjusting the susie_rss coverage parameter using the --finemap_CScoverage option may allow lower coverage credible sets to be identified but these should be treated with caution (See: https://chr1swallace.github.io/coloc/articles/a06_SuSiE.html).\n",sep='')
     sink()
   }
   
   
   #Extract PIPs for each trait 
-  snp_PIP <- mapply(function(x,trait,keepcols){cbind(x$sets[,c("snp","variable_prob")],trait)
-  }, susie_rep, traits, SIMPLIFY = FALSE) %>%
+  snp_PIP <- mapply(function(x,trait,keepcols){cbind(x$sets[,c("snp","variable_prob")],trait)},
+                    susie_rep, traits, SIMPLIFY = FALSE) %>%
     do.call(rbind,.) 
   
   #Combine SuSiE PIP results with the minimal dataset
-  minimal_df <- full_join(minimal_df,snp_PIP,by=c("snp","trait"))  #add each PIP
+  minimal_df <- right_join(minimal_df,snp_PIP,by=c("snp","trait"))  #add each PIP; but retain only snps passing QC
   
   #If any CS were identified, extract these across traits  and add to the minimal DF
   if(any(sapply(susie_rep,function(x)x$csFound))){
@@ -675,7 +967,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       mutate(cs=as.factor(if_else(cs=="",NA_character_,cs)))
     
     #Combine SuSiE credible sets with the minimal dataset
-    minimal_df <- full_join(minimal_df,snp_CS,by="snp")
+    minimal_df <- right_join(minimal_df,snp_CS,by="snp")
   }
   
   minDFtext<- " with SNPwise finemapping information "
@@ -692,7 +984,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
 
 ## Save the minimal dataset to file, for later plotting
 sink(file = logfile, append = T)
-cat("Saving file containing harmonised summary statistics",minDFtext,"across traits to the file: data/harmonised_sumstats.csv\n",sep="")
+cat("---------\nSaving file containing harmonised summary statistics",minDFtext,"across traits to the file: data/datasets/harmonised_sumstats.csv\n",sep="")
 sink()
 
 write.table(minimal_df,file=file.path(datadir,"datasets","harmonised_sumstats.csv"),sep = ",",row.names=FALSE,col.names = TRUE,quote = FALSE)
@@ -731,12 +1023,26 @@ sink(file = logfile, append = T)
 cat("\n######\n### Colocalisation results\n######\n\n")
 sink()
 
+
+## Extract priors for coloc steps [coloc.abf and coloc.susie defaults unless options are otherwise modified]
+colocPriors<- strsplit(c(opt$priors_coloc.abf,
+                         opt$priors_coloc.susie),split=",")
+names(colocPriors) <- c("coloc.abf","coloc.susie") #set names respective to the relevant function
+
+colocPriors <- lapply(colocPriors,function(x){
+  x <- as.numeric(x)              #Set to numeric
+  names(x) <- c("p1","p2","p12")  #Declare relevant argument name
+  x<- as.list(x)                  #Convert to list
+  return(x)})
+
 #Character vector to flag which coloc analyses have been performed
 coloc_performed <- character(0)
 
 #If either SuSiE call failed, a credible set has not been found for both traits, or if analysis is passed direct to coloc, run coloc.abf
 if(any(SusieFail) || !all(sapply(susie_rep[1:2],function(x)x$csFound)) || opt$runMode %in% c("doBoth","skipSusie")){  
-  clc.abf<- coloc.abf(dataset1=sums1.region, dataset2=sums2.region)
+  
+  #Run coloc.abf via do.call to allow passing of the priors list
+  clc.abf<- do.call(coloc.abf,c(colocPriors$coloc.abf,list(dataset1=sums1.region, dataset2=sums2.region)))
   
   #Save the coloc abf results as a resource
   colocpath<- file.path(datadir,"colocalisation")
@@ -781,7 +1087,9 @@ if(any(SusieFail) || !all(sapply(susie_rep[1:2],function(x)x$csFound)) || opt$ru
 #If both susie calls are successful and credible sets identified, run coloc.susie.
 #Note that plots will overwrite any from Coloc.abf.
 if(!any(SusieFail) && all(sapply(susie_rep[1:2],function(x)x$csFound)) && opt$runMode %in% c("doBoth","trySusie")){
-  clc<- coloc.susie(dataset1=susie[[1]], dataset2=susie[[2]]) ###Run coloc based on susie outputs
+  ###run coloc.susie based on susie outputs and priors set
+  clc<- do.call(coloc.susie,c(colocPriors$coloc.susie,list(dataset1=susie[[1]], dataset2=susie[[2]])))
+  
   
   #Save the coloc abf results as a resource
   colocpath<- file.path(datadir,"colocalisation")
@@ -905,7 +1213,7 @@ for(i in 1:length(toPlot)){
     
     # #Set colour mapping and legend
     colourMapping = "cs_susie"
-    nameColourLegend<- "SuSiE fine-mapping\n(Trait: 95% credible set)"
+    nameColourLegend<- paste("SuSiE fine-mapping\n(Trait:",coveragePcent,"credible set)")
     
     #Determine filename for loop, first identify which cs are compared, then name accordingly
     if("coloc.abf" %in% coloc_performed){ 
@@ -1072,9 +1380,3 @@ for(i in 1:length(toPlot)){
 sink(file = logfile, append = T)
 cat("------------------------------\n")
 sink()
-
-# #Write to log which GWAS summary plots have been written
-# sink(file = logfile, append = T)
-# cat("Selected graphical comparison between summary statistics has been written to the file(s):\n",
-#     paste0(ggsummaryfile,sep="\n"),"\n")
-# sink()

@@ -50,6 +50,8 @@ Rscript ${scriptpath}/colocaliseRegion.R \
 		--gene_tracks 40 \
 		--restrict_nearby_gene_plotting_source "HGNC Symbol" \
 		--force_matrix FALSE \
+		--finemapQC_handleBetaFlips drop \
+		--finemap_CScoverage 0.95 \
 		--out $outpath \
 		--traits $traits \
 		--GWASconfig ${GWASinfo} \

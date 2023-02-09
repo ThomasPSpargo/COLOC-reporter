@@ -146,7 +146,7 @@ sbatch -p <partition> ./scripts/prep_1kg.sh ./ld_reference
 
 Note that running `prep_1kg.sh` produces a directory of final size `2.2GB` but additional storage is required for intermediate files. 
 
-### Analysis configuration
+### Analysis protocol
 
 Analysis can be include only finemapping, only colocalisation, or a combination of these steps.
 
@@ -162,9 +162,49 @@ The main analysis protocol is controlled using the `--runMode` option of `coloca
 - `skipSusie`: only `coloc.abf` will be applied, and processes necessary for `coloc.susie` are skipped (e.g. no need to call to plink and generate the linkage disequilibrium matrix)
 - `finemapOnly`: finemapping is performed for each trait and any colocalisation analyses are skipped
 
+### Quality control
+
+Quality control checks are performed prior to finemapping analysis to test whether the GWAS summary statistic effect estimates are consistent with the LD matrix supplied. When an LD matrix is provided from an out-of-sample population, inconsistency could indicate a poor ancestry match between the reference and GWAS samples.
+
+The main results from quality control checks performed are returned in the `./coloc/results/<prefix>_coloc/finemapQC` directory.
+
+__Testing consistency between GWAS and LD matrix__
+
+The SuSiE [`estimate_s_rss`](https://stephenslab.github.io/susieR/reference/estimate_s_rss.html) function returns a global measure of consistency between the summary statistic Z-scores (calculated from `beta` and `SE`) and LD matrix provided (see function documentation for details). This measure is a value between 0 and 1 where higher numbers indicate greater inconsistency. This can help identify whether to be cautious in interpreting finemapping results. However, there is not a clear threshold defining which values are reasonable. 
+
+We perform this check in 2 stages.
+
+First, consistency is checked across SNPs available (using all 3 estimation methods provided) after harmonising data across traits and to the reference population. If any SNPs are identified in the Z-score outliers step (see below) as having potentially reversed allele order, the check is repeated after flipping the valence of the effect estimate for these putatively reversed SNPs.
+
+Second, consistency is checked using the default 'null-mle' method only  for the dataset analysed by susie, and this result is returned alongside the overall finemapping results in the column 'LD_Zscore_consistency'. Note that this dataset may correspond exactly to the one from the first check, but could contain either fewer SNPs or some SNPs with flipped effect estimates according to the results of the Z-score outliers check and analysis settings.
+
+We suggest evaluating this measure in the context of your results. In particular, the reasonability of any credible sets identified and the SNP-wise PIP estimates should be checked against GWAS p-values, betas, or Z-scores.
+
+__Identifying Z-score outliers__
+
+The SuSiE [`kriging_rss`](https://stephenslab.github.io/susieR/reference/kriging_rss.html) function checks whether observed Z-scores correspond with those expected based on information from the LD matrix and other SNPs (see function documentation for details). As part of this check, this identifies any SNPs with test statistic effect estimates which might be inverted. These SNPs are marked in red on the Z-score plot returned by the function.
+
+We use this function to:
+- Obtain a visual indication of discordance between observed and expected Z-scores
+- Identify SNPs which may have flipped effect estimate encoding (Note: allele order was earlier harmonised with the reference and therefore the valence of the effect estimates should be congruent with the LD matrix)
+- Visualise positions of SNPs assigned to in credible sets relative to observed and expected Z-scores
+
+If any SNPs are flagged as having a potentially flipped effect estimate, we:
+- Always repeat the GWAS and LD matrix consistency check in a dataset with these values flipped (see above)
+- Offer options (controlled by `--finemapQC_handleBetaFlips`) for proceding with finemapping and subsequent colocalisation analysis steps. These options are to:
+ - continue with an unchanged datset
+ - omit (across all traits) any SNPs identified as having potentially erroneous encoding
+ - to flip the direction of the beta statistic for those SNPs flagged on a trait-by-trait basis
+ 
+ By default, we omit SNPs with putatively flipped effect estimates from the analysis, since these can substantially affect the SuSiE finemapping result.
+ 
+ The option to invert the effect estimates may improve convergence of SuSiE but should be used cautiously. This is because allele order has been harmonised between the the LD reference and the summary statistics, and therefore this flip is performed under the assumption of an allele order encoding error in the summary statistics.
+
+__Checking convergence__
+
+The number of iterations required for successful convergence of the SuSiE finemapping model is returned in the analysis log file. The [manuscript](https://doi.org/10.1371/journal.pgen.1010299) describing the approach notes that a high number of iterations can result from large inconsistencies between the LD matrix and the summary statistics. Considering the number of iterations required may help further identify if finemapping issues have occured.
 
 ### Outputs
-
 
 __Output files per-analysis__
 

@@ -17,7 +17,7 @@
 
 plotGenes <- function(bp_range,chr,genes,geneSources=NULL,gene_tracks=NULL,nudge_y=0.2){
   
-  if(nrow(genelist)==0){
+  if(nrow(genes)==0){
     stop("The list supplied to the 'genes' argument is empty; therefore nothing remains to be plotted.")
   }
 
