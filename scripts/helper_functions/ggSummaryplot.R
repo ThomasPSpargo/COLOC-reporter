@@ -14,15 +14,22 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
     ylab <- -log[10]~p
     ystring <- "pvalues"
     dset$pvalues <- -log10(dset$pvalues) #Convert p-values
-  } else if (tolower(yaxis)=="z"){
-    #Either calculate Z from beta and se, or grep the column name and ensure abs().
-    if(!"z" %in% tolower(colnames(dset))){
-      dset$z <- abs(dset$beta/dset$SE) 
-    } else {
-      dset$z <- abs(dset[[grep("^(z|Z)$",colnames(dset))]])
-    }
-    ylab <- "Absolute Z-score"
+  } else if (tolower(yaxis) %in% c("z","abs_z")){
     ystring <- "z"
+    
+    #Either calculate Z from beta and se, or grep the column name
+    if(!"z" %in% tolower(colnames(dset))){
+      dset$z <- dset$beta/dset$SE
+    } else {
+      dset$z <- dset[[grep("^(z|Z)$",colnames(dset))]]
+    }
+    
+    if(tolower(yaxis)=="abs_z"){ #Conditionally convert to absolute z-scores.
+      ylab <- "Absolute Z-score"
+      dset$z <- abs(dset$z)
+    } else {
+      ylab <- "Z-score"
+    }
   } else if(tolower(yaxis)=="pip"){
     ylab <-  "PIP"
     ystring <- "variable_prob"
@@ -51,6 +58,11 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
   } else {
     xscale <- 1
     xscale_magnitude <- ""
+  }
+  
+  if(!is.null(colourMapping)){ #Arrange data so that coloured points will always be plotted atop the NA values
+    dset <- dset %>%
+      arrange(desc(is.na(.data[[colourMapping]])),.data[[colourMapping]])
   }
   
   #Logical to indicate whether the plot is for a measure with negative values - if yes draw a hatched line along 0

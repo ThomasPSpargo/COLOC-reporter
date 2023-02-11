@@ -6,15 +6,14 @@
 #####
 MAIN=/scratch/users/k1802739/COLOC-reporter 		#Main directory to work within
 LDREFERENCE=${MAIN}/ld_reference/EUR_phase3_chr		#Location and prefix for per-chromosome reference files in plink-binary format
-GWASinfo=${MAIN}/scripts/GWAS_samples.txt			#Input file detailing configuration of traits and GWAS summary statistic inputs
 plinkpath=plink										#If plink executable cannot be automatically identified by system, specify the relevant file path.
 
-scriptpath=${MAIN}/scripts		#Path identifying the the location of scripts to run in each job
+scriptpath=${MAIN}/scripts		#Path identifying the the location of scripts for running the job and the GWAS_samples.txt input file
+
 comparisons=${MAIN}/scripts/set.regions.txt			#Input file dictating phenotype pairings and loci to analyse
 
 
-sumplots=PIP,p,beta 								#A comma-separated string passed to --GWASsumplots, see option help documentation
-sumplots_onefile=FALSE								#Logical setting, set TRUE to provide all plots requested in $sumplots as a single figure
+sumplots=PIP,p,beta,z 								#A comma-separated string passed to --GWASsumplots, see option help documentation for the gwasSummaryPlotter.R script
 
 runMode=doBoth		#Which analysis configuration to run (see documentation).
 
@@ -47,7 +46,7 @@ for i in $(seq 1 $loops); do	#Loop for each row of $phenos
 		printf "The colocalisation.log file exists in the output directory, analysis is not run\n"
 	else
 		#If no output already, submit as a slurm job
-		sbatch -J ${analysis} -o ${MAIN}/logs/%x.log ${MAIN}/scripts/runColocaliseRegion.job $scriptpath $traits $locus $GWASinfo $LDREFERENCE $outpath $sumplots $sumplots_onefile $plinkpath $runMode
+		sbatch -J ${analysis} -o ${MAIN}/logs/%x.log ${MAIN}/scripts/runColocaliseRegion.job $scriptpath $traits $locus $LDREFERENCE $outpath $sumplots $plinkpath $runMode
 
 		printf "\nOutput will be saved in directory with path and prefix:\n${outpath}\n"
 

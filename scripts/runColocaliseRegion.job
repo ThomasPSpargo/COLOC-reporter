@@ -16,20 +16,18 @@ scriptpath=$1
 # extract phenotype IDs and locus to analyse
 traits=$2
 locus=$3
-GWASinfo=$4
 
 
 #Set analysis options
-LDREFERENCE=$5		#File path and prefix for LD reference plink-binary files
-outpath=$6		#File path and prefix for the output files.
-sumplots=$7		#Which summary plots to generate
-sumplots_onefile=$8 	#Logical indicating whether to put summary plots all into one file
+LDREFERENCE=$4		#File path and prefix for LD reference plink-binary files
+outpath=$5		#File path and prefix for the output files.
+sumplots=$6		#Which summary plots to generate
 
 #Path to plink executable
-plinkpath=${9}
+plinkpath=${7}
 
 #Which analyses to run
-runMode=${10}
+runMode=${8}
 	
 
 tmp_dir=$(mktemp -d -t ci-XXXXXXXXXX)
@@ -50,11 +48,12 @@ Rscript ${scriptpath}/colocaliseRegion.R \
 		--gene_tracks 40 \
 		--restrict_nearby_gene_plotting_source "HGNC Symbol" \
 		--force_matrix FALSE \
+		--finemap_refine FALSE \
 		--finemapQC_handleBetaFlips drop \
 		--finemap_CScoverage 0.95 \
 		--out $outpath \
 		--traits $traits \
-		--GWASconfig ${GWASinfo} \
+		--GWASconfig ${scriptpath}/GWAS_samples.txt \
 		--helperFunsDir "${scriptpath}/helper_functions"
 		
 echo "Running GWAS summary figure script"
@@ -63,9 +62,9 @@ echo "Running GWAS summary figure script"
 Rscript ${scriptpath}/gwasSummaryPlotter.R \
 		--traits $traits \
 		--harmonisedSumstats ${outpath}_coloc/data/datasets/harmonised_sumstats.csv \
-		--GWASconfig ${GWASinfo} \
+		--GWASconfig ${scriptpath}/GWAS_samples.txt \
 		--GWASsumplots $sumplots \
-		--GWASsumplots_onefile $sumplots_onefile \
+		--GWASsumplots_onefile FALSE \
 		--GWASsumplots_incfinemapping TRUE \
 		--helperFunsDir "${scriptpath}/helper_functions" \
 		--outdir "${outpath}_coloc/plots" 

@@ -30,6 +30,12 @@ option_list = list(
               help="The SuSiE kriging_rss function is used to check whether observed Z-scores (calculated from beta and SE) correspond with expected Z-scores based on information from the LD matrix and other SNPs. This check indicates if any SNP effect estimates appear like they may be reversed. Set this option to 'flip' to automatically reverse the direction of betas with test statistics identified as inverted on a trait-by-trait basis, or to 'drop' to remove them from all traits across analyses; the option defaults to 'drop'. The check for potentially flipped alleles will be performed but the data used for subsequent analysis will be unchanged if any other strings are passed to this option. Note that the setting applied here will affect both the finemapping and colocalisation analysis steps, but will only be applied in circumstances when SuSiE finemapping is performed."),
   make_option("--finemap_CScoverage", action="store", default=0.95, type='numeric',
               help="Numeric between 0 and 1 to indicate the credible set threshold to use for finemapping; defaults to 0.95, which returns 95% credible sets."),
+  make_option("--finemap_refine", action="store", default=FALSE, type='logical',
+              help="Logical, defaulting to FALSE. Specify TRUE to add a refinement step to SuSiE finemapping call to avoid identification of local maxima."),
+  make_option("--finemap_initialL", action="store", default=10, type='numeric',
+              help="Numeric, defaulting to 10, which is the susie default, to indicate the maximum number of non-zero effects to allow in the initial susie regression model."),
+  make_option("--finemap_increaseL", action="store", default=TRUE, type='logical',
+              help="Logical, defaulting to TRUE which indicates that higher values of L should be attempted in susie finemapping (with L+10 for each loop) when the number of credible sets found match the current L value. Setting this to FALSE will run susie once only, using the L setting specified in the --finemap_initialL option."),
   make_option("--priors_susie", action="store", default=NULL, type='numeric',
               help="Set a prior probability that a snp is causal for susie finemapping (equivalent to coloc p1 or p2). Set to NULL by default which corresponds to the default for the coloc::runsusie wrapper around susie_rss; this is not usual default for susie_rss - see coloc::runsusie documentation for details."),
   make_option("--priors_coloc.abf", action="store", default="1e-4,1e-4,1e-5", type='character',
@@ -93,6 +99,10 @@ if(test==TRUE){
   opt$priors_coloc.abf <- "1e-4,1e-4,1e-5"
   opt$priors_coloc.susie <-"1e-04,1e-04,5e-06"
   
+  opt$finemap_initialL <- 10
+  opt$finemap_increaseL <- TRUE
+  opt$finemap_refine <- TRUE
+  
 }
 
 #Extract names of traits compared, first dropping file path, and then any prefixes indicated by a preceding underscore
@@ -147,7 +157,6 @@ xScaler <- function(range){
   }
   return(list(xscale=xscale,xscale_magnitude=xscale_magnitude))
 }
-
 
 sink(file = logfile, append = F)
 cat(
@@ -414,6 +423,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       arrange(match(snp, ld_names)) %>%
       mutate(position = row_number())
   })
+
 } 
 
 ######
@@ -693,25 +703,40 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   
   SusieFail <- logical(0) #SusieFail indicates if susie was successful across traits: TRUE indicates an error was thrown
   susie <- mapply(function(dset,trait){
+    L <- opt$finemap_initialL #Define the number of credible sets to initially fit
+    
+    #Set a list of arguments to pass to runsusie (and internal susieR functions) with do.call
+    #Is programmed this way to avoid repetition in any potential while loop for increasing the L argument
+    runsusieArgs <- list(d=dset,
+                         n=max(dset$N),
+                         estimate_residual_variance = FALSE,
+                         coverage=opt$finemap_CScoverage,
+                         p=opt$priors_susie,
+                         refine=opt$finemap_refine,
+                         maxit=ifelse(opt$finemap_refine,10000,100),
+                         check_prior=TRUE
+      )
+    
     tryCatch({
       
-      # #Option to apply prior variance as per coloc-defaults, per runsusie documentation
-      # if(dset$type=="cc"){ 
-      #   prior_variance = 0.2^2
-      # } else if (dset$type=="quant" && !is.null(dset$sdY)){   #use sdY directly
-      #   prior_variance = (0.15/dset$sdY)^2
-      # } else if (dset$type=="quant" && is.null(dset$sdY)){    #or impute with coloc function
-      #   prior_variance = (0.15/coloc:::sdY.est(dset$varbeta,dset$MAF,n=mean(dset$N)))^2
-      # } else {
-      #   prior_variance = NULL
-      # }
-      
-      #Option to estimate residual variance could be true per the susie tutorials, However, cf:
-      #https://github.com/stephenslab/susieR/issues/162
-      #Therefore, agreeing with coloc defaults, estimate_residual_variance= FALSE always.
-      
       #Run Susie
-      finemap<- runsusie(dset,n=max(dset$N),estimate_residual_variance = FALSE,coverage=opt$finemap_CScoverage,p=opt$priors_susie)
+      finemap<- do.call(runsusie,c(runsusieArgs,list(L=L)))
+      
+      #If the fit indicates a number of CS close to the maximum number of L, recursively try a larger number
+      opt$finemap_increaseL <- TRUE
+      if(opt$finemap_increaseL){
+        while(max(finemap$sets$cs_index)>=L-2){
+          L=L+10 #Iteratively increase number
+          finemap<- do.call(runsusie,c(runsusieArgs,list(L=L)))
+          
+          if(L==100) break #Set a very high limit on the loop to avoid potential infinite loop
+        }
+      }
+      #Alternative syntax to run this without the coloc wrapper
+      #finemap<- susie_rss(dset$beta/dset$SE,R=dset$LD,n=max(dset$N),refine=TRUE)
+      
+      ## Some basic diagnostics
+      #susie_plot(finemap,y="PIP",add_legend=TRUE) 
       
       #Save the susie results as a resource
       finemappath<- file.path(datadir,"finemapping")
@@ -835,6 +860,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
         z_compare_csplot<- cbind(basedata,z_compare_cs$conditional_dist) %>%
           left_join(sets[c("snp","cs")],by="snp") %>%
           mutate(alpha=if_else(!is.na(cs),1,0)) %>%
+          arrange(desc(is.na(cs)),cs) %>% #Arrange to force plotting of non-NA vals (i.e. CS), atop the non-cs snps)
           ggplot(.,aes(x=condmean,y=z,colour=!!colourMapping,alpha=alpha))+
           geom_point() +
           theme_bw()+
@@ -845,72 +871,99 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
           guides(color=guide_legend(title="Credible set"),alpha="none")
         
         ggsave(file.path(finemapQCdir,paste0("Z_score_alignment",trait,"_withCS.pdf")),z_compare_csplot,device="pdf",units="mm",width=150,height=150)
-      
-      ##### Create summary file    
-      finemap_summary <- data.frame(CS_span = NA,
-                                    LD_Zscore_consistency=finalConsistencyCheck,
-                                    beta_maxSNP = basedata$snp[which(basedata$beta==max(basedata$beta))],
-                                    p_minSNP = basedata$snp[which(basedata$pvalues==min(basedata$pvalues))],
-                                    TopPIPsnp = NA,
-                                    sum_susie$cs,
-                                    NSNP=NA,
-                                    TopPIP=NA,
-                                    Genes_near_span=NA)
-      
-      for(j in 1:nrow(sum_susie$cs)){
-        snp_index<-as.numeric(unlist(strsplit(finemap_summary$variable[j], ',')))
         
-        finemap_summary$NSNP[j] <- length(snp_index)
-        finemap_summary$TopPIP[j]<-max(susie.fit$pip[snp_index])
-        finemap_summary$TopPIPsnp[j]<- paste(names(susie.fit$pip)[susie.fit$pip==finemap_summary$TopPIP[j] & seq_along(susie.fit$pip) %in% snp_index], collapse=', ')
+        ##### Create summary file
+        finemap_summary <- data.frame(CS_span = NA,
+                                      LD_Zscore_consistency=finalConsistencyCheck,
+                                      beta_maxSNP = basedata$snp[which(basedata$beta==max(basedata$beta))],
+                                      p_minSNP = basedata$snp[which(basedata$pvalues==min(basedata$pvalues))],
+                                      TopPIPsnp = NA,
+                                      sum_susie$cs,
+                                      NSNP=NA,
+                                      TopPIP=NA,
+                                      Genes_near_span=NA)
         
-        ss_subset<-basedata[(basedata$snp %in% names(susie.fit$pip)[snp_index]),]
-        min_bp<-min(ss_subset$pos)
-        max_bp<-max(ss_subset$pos)
-        chr<-ss_subset$chr[1]
-        
-        finemap_summary$CS_span[j]<- paste0("chr",chr,":",min_bp,"-",max_bp) #span of credible set
-        
-        Genes_subset<- Genes[Genes$chromosome_name == chr & (
-          (Genes$start_window >= min_bp & Genes$start_window <= max_bp) | #Test if start position is within range
-            (Genes$end_window >= min_bp & Genes$end_window <= max_bp) |   #or if end position is within range
-            (Genes$start_window <= min_bp & Genes$end_window >= max_bp)   #or if start and end positions are both outside range [gene straddles window]
-        ),]
-        
-        if(nrow(Genes_subset) > 0){
-          #Write the gene names
-          finemap_summary$Genes_near_span[j]<-paste(Genes_subset$external_gene_name, collapse=', ')
+        for(j in 1:nrow(sum_susie$cs)){
+          snp_index<-as.numeric(unlist(strsplit(finemap_summary$variable[j], ',')))
           
-          #Save details for genes near to credible set #NO MENTION OF THIS OUTPUT IN THE REPORT
-          sets_outpath<- file.path(tabdir,paste0("nearby_genes_",trait,"_cs",j,".csv"))
-          Genes_subset %>%
-            dplyr::select(-c(start_window,end_window)) %>%
-            write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
+          finemap_summary$NSNP[j] <- length(snp_index)
+          finemap_summary$TopPIP[j]<-max(susie.fit$pip[snp_index])
+          finemap_summary$TopPIPsnp[j]<- paste(names(susie.fit$pip)[susie.fit$pip==finemap_summary$TopPIP[j] & seq_along(susie.fit$pip) %in% snp_index], collapse=', ')
+          
+          ss_subset<-basedata[(basedata$snp %in% names(susie.fit$pip)[snp_index]),]
+          min_bp<-min(ss_subset$pos)
+          max_bp<-max(ss_subset$pos)
+          chr<-ss_subset$chr[1]
+          
+          finemap_summary$CS_span[j]<- paste0("chr",chr,":",min_bp,"-",max_bp) #span of credible set
+          
+          Genes_subset<- Genes[Genes$chromosome_name == chr & (
+            (Genes$start_window >= min_bp & Genes$start_window <= max_bp) | #Test if start position is within range
+              (Genes$end_window >= min_bp & Genes$end_window <= max_bp) |   #or if end position is within range
+              (Genes$start_window <= min_bp & Genes$end_window >= max_bp)   #or if start and end positions are both outside range [gene straddles window]
+          ),]
+
+          if(nrow(Genes_subset) > 0){
+            #Write the gene names
+            finemap_summary$Genes_near_span[j]<-paste(Genes_subset$external_gene_name, collapse=', ')
+
+            #Save details for genes near to credible set #NO MENTION OF THIS OUTPUT IN THE REPORT
+            sets_outpath<- file.path(tabdir,paste0("nearby_genes_",trait,"_cs",j,".csv"))
+            Genes_subset %>%
+              dplyr::select(-c(start_window,end_window)) %>%
+              write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
+          }
         }
+        finemap_summary$variable <- NULL
+        
+        #Write finemapping summary to a file and concatenate with previous results if file already exists
+        finemapSummary<- file.path(tabdir,"results_summary_finemapping.csv")
+        write.table(cbind(trait=unname(trait),finemap_summary),
+                    file=finemapSummary,sep = ",",row.names=FALSE,col.names = !file.exists(finemapSummary),append = file.exists(finemapSummary))
+        
+        
+        ## Generate some summary plots
+        
+        #Select the top snps and cs index
+        topsnps<- finemap_summary[c("TopPIPsnp","cs")]
+        names(topsnps)[1] <- "topsnp"
+        
+        #Where multiple top snps have been matched, split into long format dataset
+        #some plots will allow inclusion of multiple snps per CS and downsampling is handled internally
+        topsnps <- separate_rows(topsnps, all_of("topsnp"), sep = ", ")
+        
+        ## First, plot LD in the region relative to top snps from the credible set(s) identified
+        
+        #Visualise the LD between Top PIP SNPs and other SNPs in the dataset / assigned to CS in heatmap
+        #The plotting function expects an index of the top snps to plot ("topsnp") and the credible set to which they correspond ("cs")
+        ldHeatmap<- susie_cs_ld(sets=sets,R=keepLD,topsnps=topsnps,heatmapPalette="OrRd",discretePalette=ggpalette,
+                                alignment=37,plotR2=TRUE,trait=trait)
+        
+        ggsave(file.path(figdir,paste0("LD_correlations_withCS_",trait,".pdf")),ldHeatmap$heatmap_allSNPs,device="pdf",units="mm",width=200,height=150)
+        ggsave(file.path(figdir,paste0("LD_correlations_withCS_",trait,"_CSsnpsOnly.pdf")),ldHeatmap$heatmap_CSonly,device="pdf",units="mm",width=200,height=150)
+        
+        #If 2+ CS, visualise correlations between different credible sets
+        if(length(susie.fit$sets$cs)>1){
+          cs_heatmap <- susieCScorrs(susie.fit,R=keepLD,return_beta_comparisons=TRUE,sets=sets,topsnps =topsnps)
+          ggsave(file.path(finemapQCdir,paste0("cs_correlations_",trait,".pdf")),cs_heatmap$heatmap,device="pdf",units="mm",width=150,height=150)
+        }
+        
+      } else {
+        finemap_summary <- paste("No",coveragePcent,"credible sets could be identified")
       }
-      finemap_summary$variable <- NULL
       
-      #Write finemapping summary to a file and concatenate with previous results if file already exists
-      finemapSummary<- file.path(tabdir,"results_summary_finemapping.csv")
-      write.table(cbind(trait=unname(trait),finemap_summary),
-                  file=finemapSummary,sep = ",",row.names=FALSE,col.names = !file.exists(finemapSummary),append = file.exists(finemapSummary))
+      #Sink directly to file
+      sink(file = logfile, append = T)
+      cat("------------------------------\n")
+      cat("SuSiE finemap result for ", trait,":\n",sep="")
+      cat("Model fitted using", susie.fit$niter,"iterations, and converged =",susie.fit$converged,"\n\n")
+      print(finemap_summary)
+      cat("\n",tab_out)
+      cat("------------------------------\n")
+      sink()
       
-    } else {
-      finemap_summary <- paste("No",coveragePcent," credible sets could be identified")
-    }
-    
-    #Sink directly to file
-    sink(file = logfile, append = T)
-    cat("------------------------------\n")
-    cat("SuSiE finemap result for ", trait,":\n",sep="")
-    cat("Model fitted using", susie.fit$niter,"iterations, and converged =",susie.fit$converged,"\n\n")
-    print(finemap_summary)
-    cat("\n",tab_out)
-    cat("------------------------------\n")
-    sink()
-    
-    #Return results just in case
-    return(list(finemap_summary=finemap_summary,tab_out=tab_out,csFound=csFound, sets=sets))
+      #Return results just in case
+      return(list(finemap_summary=finemap_summary,tab_out=tab_out,csFound=csFound, sets=sets))
     }
   },susie,basedata=sums.region,trait=traits,failed=SusieFail,SIMPLIFY = FALSE)
   

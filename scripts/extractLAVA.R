@@ -23,6 +23,8 @@ option_list = list(
               help="Character string which may be any of: 'genomicRegion', 'LAVAlocus', 'traitsOnly'.\n'genomicRegion' is the default, and extracts regions below the p-value threshold in comma separated list of the format 'chromosome,start_position,end_position' (e.g. 17,43460501,44865832).\n'LAVAlocus' functions like genomicRegion, but instead extracts the locus number associated with the region.\n'traitsOnly' ignores any p-value thresholding, and instead extracts every pair of traits for which LAVA has an output - the output will only have 2 columns."),
   make_option("--returnPvalue", action="store", default=FALSE, type='logical',
               help="False by default. Set TRUE to include p-values for the regions extracted. Note that if --useFDR is true, then two columns will be returned. first p and the p following fdr adjustment."),
+  make_option("--fullRowsToFile", action="store", default=NULL, type='character',
+              help="Specify a file path to return an additional tab-separated output file including all signifciant rows."),
   make_option("--regionWindow", action="store", default=0, type='numeric',
               help="0 by default. Specify an additional number of base pairs to include around the region identified by LAVA")
 )
@@ -91,6 +93,18 @@ for(i in 1:length(files)){
   }
   
   if(length(rows)>0){ #Write to file if there are any rows to include
+    
+    if(!is.null(opt$fullRowsToFile)){
+      write.table(lavabivar[rows,],
+                  file=opt$fullRowsToFile,
+                  quote=FALSE,
+                  append=FALSE,
+                  sep="\t",
+                  col.names = TRUE,
+                  row.names = FALSE)
+      
+    }
+    
     
     toWrite <- lavabivar[rows,cols]
     
