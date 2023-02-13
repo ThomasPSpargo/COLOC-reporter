@@ -53,7 +53,7 @@ Various R packages are required. Running the following in `R` checks for necessa
 
 ```
 #Name required packages
-req_packages <- c("tidyverse","optparse","data.table","R.utils","coloc","susieR", "biomaRt","ggrepel", "patchwork")
+req_packages <- c("tidyverse","optparse","data.table","R.utils","coloc","susieR", "biomaRt","ggrepel", "patchwork","kableExtra")
 
 #Check for presence of packages
 pkg_missing <- req_packages[!req_packages %in% installed.packages()[,"Package"]]
@@ -211,6 +211,8 @@ __Output files per-analysis__
 _Analysis summary_
 
 The file `./coloc/results/<prefix>_coloc/colocalisation.log`, where `<prefix>` identifies the name given to a particular analysis, gives an overview of the results obtained from `colocaliseRegion.R`. The summary includes description of initial summary statistic processing and indicates where more detailed analysis outputs can be found.
+
+The file `./coloc/results/<prefix>_coloc/analysis_report.html` contains a comprehensive report of the finemapping step and related quality control across traits analysed. The other steps are not yet implemented into a report so please refer to the `colocalisation.log` file for now.
 
 The directory `./coloc/results/<prefix>_coloc/tables/` contains all tabular summaries generated within completed analyses. The most important outputs, which overview finemapping and colocalisation result, can be found in:
 - `results_summary_coloc_abf.csv`

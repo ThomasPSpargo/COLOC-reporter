@@ -127,6 +127,8 @@ tabdir <- file.path(opt$out,"tables")
 if(!dir.exists(tabdir)){dir.create(tabdir)}
 datadir <- file.path(opt$out,"data")
 if(!dir.exists(datadir)){dir.create(datadir)}
+reportdir <- file.path(datadir,"reports")
+if(!dir.exists(reportdir)){dir.create(reportdir)}
 if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   finemapQCdir <- file.path(opt$out,"finemapQC")
   if(!dir.exists(finemapQCdir)){dir.create(finemapQCdir)}
@@ -965,10 +967,10 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   finemapReports<- grep("RMD_finemap_",ls(envir=.GlobalEnv),value=TRUE)
   
   
-  #Render the QC report
+  #Render the QC report per-trait
   invisible(mapply(renderReport,
          params=finemapReports,
-         outfile=file.path(normalizePath(opt$out),paste0("02_",gsub("RMD_","",finemapReports),"_report.html")),
+         outfile=file.path(normalizePath(reportdir),paste0("02_",gsub("RMD_","",finemapReports),"_report.html")),
          MoreArgs = list(template=file.path(opt$scriptsDir,"rmd","finemap_report.Rmd"))))
   
   
@@ -1437,6 +1439,41 @@ for(i in 1:length(toPlot)){
 } 
 } #Bracket indicating the end of the else condition performed when opt$runMode!="finemapOnly"
 
+######
+### Generate the global HTML report
+######
+
+### Get report information for each step
+
+#P01 ...
+
+#P03 ...
+
+#Finemapping reports are handled per-trait. Therefore combine them into a single list
+finemapReports<- grep("RMD_finemap_",ls(envir=.GlobalEnv),value=TRUE)
+if(length(finemapReports)>0){
+  P02<- lapply(finemapReports,get)
+  names(P02) <- lapply(P02,function(x)x$trait)
+}
+
+#Create a concatenated list of all the params to pass to the parent report
+prm<-list(P01=switch(exists("P01"),P01,NULL),
+     P02=switch(exists("P02"),P02,NULL),
+     P03=switch(exists("P03"),P03,NULL),
+     rmdDir=file.path(normalizePath(opt$scriptsDir),"rmd"))
+
+#Declare the file name
+finalRep<- file.path(normalizePath(opt$out),"analysis_report.html")
+
+
+#Render the parent report
+renderReport(template=file.path(normalizePath(opt$scriptsDir),"rmd","parent_report.Rmd"),
+             params="prm", #prm is passed to get() function
+             outfile=finalRep
+)
+
 sink(file = logfile, append = T)
 cat("------------------------------\n")
+cat("An html report overviewing the complete analysis can be found in:", basename(finalRep))
+cat("The report currently only contains the finemapping step. Please review this log for other steps and the plots directory for figures comparing across traits used for colocalisation analysis.\n")
 sink()

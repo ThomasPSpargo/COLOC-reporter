@@ -1,5 +1,5 @@
 ---
-title: "Finemapping report"
+title: "Finemapping report: `r params$trait`"
 author: "[COLOC-reporter](https://github.com/ThomasPSpargo/COLOC-reporter)"
 date: "`r Sys.Date()`"
 output:
@@ -69,7 +69,7 @@ The check of LD matrix and summary statistic consistency estimated `r paste0("$s
 
 __Finemapping__ 
 
-SuSiE identified `r params$nCS` `r params$coverage` credible set`r ifelse(params$nPossFlipped==1,"s","")` for `r traitname`. The algorithm took `r params$niter` iterations and converged = `r params$converged`.
+SuSiE identified `r params$nCS` `r params$coverage` credible set`r ifelse(params$nCS!=1,"s","")` for `r traitname`. The algorithm took `r params$niter` iterations and converged = `r params$converged`.
 
 SNP-wise summaries can be viewed below. `r if(params$nCS>0) paste0("Credible set summaries are also given, alongside figures visualising ", ifelse(params$nCS>1,"correlations between the identified credible sets, and ",""), "LD between SNPs in the region and the top PIP SNPs.")`
 
@@ -164,7 +164,6 @@ params$CS_corrmap
 </details>
 
 `r if(is.null(params$CS_corrmap)) "\\end{comment}"`
-
 
 #### SNP-wise summaries {.tabset}
 
@@ -270,10 +269,7 @@ ___
 
 `r if(params$nCS==0) "\\end{comment}"`
 
-
-
 <!--- Extra HTML to force removal of whitespace caused by the table of contents --->
-
 
 <div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>
 

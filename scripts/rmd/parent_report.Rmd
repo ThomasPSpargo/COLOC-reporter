@@ -1,0 +1,85 @@
+---
+title: "Workflow report"
+author: "[COLOC-reporter](https://github.com/ThomasPSpargo/COLOC-reporter)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+    
+params:
+  P01: NULL
+  P02: NULL
+  P03: NULL
+  rmdDir: NULL
+---
+
+_Please reach out to [Thomas Spargo](mailto:thomas.spargo@kcl.ac.uk) with any questions_
+
+<!---
+
+#Params unlocking developed on the basis of this answer
+https://stackoverflow.com/questions/49475303/rmarkdown-child-documents-do-not-detect-their-params?noredirect=1&lq=1
+
+
+This document is a parent report used to concatenate across smaller report sections from this analysis workflow.
+
+Each param of PO1..3 stores a list of parameters which are to be passed to the constituent child reports
+
+P02 is a list with multiple reports derived for each trait. This chunk is therefore generated recursively.
+
+rmdDir is the directory containing all child report template files
+
+Parameterisation of child reports derived based on ideas following:
+https://stackoverflow.com/questions/49475303/rmarkdown-child-documents-do-not-detect-their-params
+--->
+
+```{r, include=FALSE}
+
+#Store the top-level parameters, since the params list will be replaced respectively to each child report
+parentParams <- params 
+
+#Remove the lock on the object 'params'
+unlockBinding("params",env=environment())
+
+```
+
+`r if(is.null(parentParams$P01)) "\\begin{comment}"`
+
+# Preprocessing
+
+Placeholder
+
+`r if(is.null(parentParams$P01)) "\\end{comment}"`
+
+# Finemapping
+
+```{r, results='asis', echo=FALSE}
+
+#Declare the template for the dynamic tabs; ie. the knitted report
+template <- c(
+    "\n\n## {{nm}}",
+    "`r params <- parentParams$P02${{nm}}`",
+    "```{r child=file.path(parentParams$rmdDir,'finemap_report.Rmd')}",
+    "```")
+
+
+report02 <- lapply(names(parentParams$P02),
+  function(nm) knitr::knit_expand(text = template)
+)
+
+res<- knitr::knit(text = unlist(report02),quiet=TRUE)
+cat(res,sep="\n\n")
+
+```
+
+
+`r if(is.null(parentParams$P03)) "\\begin{comment}"`
+
+# Colocalisation analysis
+
+Placeholder
+
+`r if(is.null(parentParams$P03)) "\\end{comment}"`
+
