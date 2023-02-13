@@ -1,0 +1,280 @@
+---
+title: "Finemapping report"
+author: "[COLOC-reporter](https://github.com/ThomasPSpargo/COLOC-reporter)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+    
+params:
+  trait: NULL
+  alignment: NULL
+  coverage: NULL
+  initNsnp: NULL
+  nPossFlipped: NULL
+  finalNsnp: NULL
+  init_s_estimate: NULL
+  final_s_estimate: NULL
+  zPlot: NULL
+  zPlot_withCS: NULL
+  CS_corrmap: NULL
+  LDheatmaps: NULL
+  nCS: 0
+  niter: NULL
+  converged: NULL
+  finemapSummary: NULL
+  sets: NULL
+  coloc_format_data: NULL
+  
+---
+
+<!---
+Lines like the following are paired with matching lines including \\end{comment}, which selectively disable report sections based on conditions specified in inline R code
+(c.f https://stackoverflow.com/questions/39550732/is-there-a-way-to-have-conditional-markdown-chunk-execution-in-rmarkdown)
+`r if(is.null(params$example)) {"\\begin{comment}"}`
+--->
+
+
+```{r, include=FALSE}
+library(kableExtra)
+library(patchwork)
+library(tidyverse)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      warning= FALSE,
+                      results = 'asis'
+)
+
+#Declare how the trait will be named throughout the report; use friendly names if provided
+traitname <- ifelse(!is.null(names(params$trait)),names(params$trait),params$trait)
+  
+
+#reformat NA values as just a dash
+options(knitr.kable.NA = '-',digits = 3)
+```
+
+___
+
+### Overview
+
+__Quality control__ 
+
+Before finemapping quality control, `r params$initNsnp` SNPs were included in the dataset. Following QC across all traits using the current settings, `r params$finalNsnp` SNPs remain.
+
+While comparing observed and expected Z-scores, `r params$nPossFlipped` `r ifelse(params$nPossFlipped==1," SNP was"," SNPs were")` flagged in the `r traitname` dataset for having allele encoding which may be inverted.
+
+The check of LD matrix and summary statistic consistency estimated `r paste0("$s=",round(params$final_s_estimate,3),"$")` in the final dataset.
+
+__Finemapping__ 
+
+SuSiE identified `r params$nCS` `r params$coverage` credible set`r ifelse(params$nPossFlipped==1,"s","")` for `r traitname`. The algorithm took `r params$niter` iterations and converged = `r params$converged`.
+
+SNP-wise summaries can be viewed below. `r if(params$nCS>0) paste0("Credible set summaries are also given, alongside figures visualising ", ifelse(params$nCS>1,"correlations between the identified credible sets, and ",""), "LD between SNPs in the region and the top PIP SNPs.")`
+
+### Quality control
+
+<details><summary>Show details</summary>
+
+#### Consistency between the LD matrix and summary statistics
+
+The SuSiE [`estimate_s_rss`](https://stephenslab.github.io/susieR/reference/estimate_s_rss.html) function returns a global estimate of consistency between the summary statistic Z-scores (calculated from beta and SE) and the LD matrix provided (see function documentation and the following [vignette](https://stephenslab.github.io/susieR/articles/susierss_diagnostic.html) for details). This measure, denoted _s_, is a value between 0 and 1 where higher numbers indicate greater inconsistency. Finemapping results in the presence of higher _s_ values should be interpreted more cautiously. However, there is not a clear threshold defining which values are reasonable.
+
+This check was first applied to the data before any other quality control step. `r if(nrow(params$init_s_estimate)>1) "Since at least 1 SNP was identified as having potentially flipped allele encoding in the subsequent Z-score check, this first check was repeated after reversing the valence of any flagged SNPs."`
+
+``` {r}
+
+kable(params$init_s_estimate,align = "c",
+      col.names = c('Trait ID', 'Were any effect estimates reversed',colnames(params$init_s_estimate)[3:5]),
+      row.names=FALSE) %>%
+    kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+    add_header_above(c(" " = 2, "Estimation method" = 3))
+
+```
+
+The check was repeated with final dataset used for finemapping (post-quality control) and the null.mle method estimated that `r paste0("$s=",round(params$final_s_estimate,3),"$")`.
+
+#### Observed and expected Z-scores
+
+The SuSiE [`kriging_rss`](https://stephenslab.github.io/susieR/reference/kriging_rss.html) function checks whether observed Z-scores correspond with those expected based on information from the LD matrix and the effects observed for other SNPs (see function documentation and the following [vignette](https://stephenslab.github.io/susieR/articles/susierss_diagnostic.html) for details). As part of this check, this flags any SNPs with test statistic effect estimates which may be inverted. These SNPs are marked in red on the plot returned by the function.
+
+```{r}
+params$zPlot
+```
+
+`r if(params$nCS<1) "\\begin{comment}"`
+
+<details><summary>View figure with colouring marking credible sets</summary>
+
+```{r}
+params$zPlot_withCS
+```
+
+</details>
+
+`r if(params$nCS<1) "\\end{comment}"`
+
+___
+
+### Finemapping results
+
+#### Credible set summaries
+
+```{r}
+
+summary<- params$finemapSummary
+
+#If Susie fails, then the summary is returned as a character string; print this directly
+if(class(summary)!="character"){
+  
+  genesCol<- ncol(summary)
+  
+  #Establish the width relative to the number of breaks made by str_wrap
+  maxLength<- summary$Genes_near_span[nchar(summary$Genes_near_span)==max(nchar(summary$Genes_near_span))]
+  nWraps<- str_count(str_wrap(maxLength,width=80),"\n")
+  
+  kable(summary,align = "c") %>% kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+    column_spec(column=genesCol, width_min = paste0(10*nWraps,"em")) %>% 
+    scroll_box(width = "100%") #column spec must be given before scrollbox
+} else {
+  cat(summary)
+}
+
+```
+
+`r if(params$nCS>0) "Some additional details about genes nearby to credible sets are available in the output directory."`
+
+`r if(is.null(params$CS_corrmap)) "\\begin{comment}"`
+
+<details><summary>View credible set correlations</summary>
+
+<!---Headers enclosed within details need to be at least one level lower than the enclosing region. However, headers within the details div child report knitting from parent report. Header removed entirely--->
+
+__Credible set correlations__
+
+The SuSiE [get_cs_correlation](https://stephenslab.github.io/susieR/reference/get_cs_correlation.html) function calculates correlations between the top PIP SNPs from each credible set.
+
+The following figure presents these within a heatmap. The plot diagonal shows the number of SNPs in each credible set and the Z-score for the top PIP snp. The lower triangle displays the correlation estimates.
+
+```{r}
+params$CS_corrmap
+```
+
+</details>
+
+`r if(is.null(params$CS_corrmap)) "\\end{comment}"`
+
+
+#### SNP-wise summaries {.tabset}
+
+The following plots display the distribution of SNPs, ordered by genomic position, across various measures. PIP values are determined during finemapping, whilst the other measures are obtained from the GWAS summary statistics.
+
+`r if(params$nCS==0) "\\begin{comment}"`
+
+SNPs in the figures are coloured by credible set. In the legend, `C` indicates the number of SNPs assigned to the set, and `R` indicates [_purity_](https://doi.org/10.1371/journal.pgen.1010299), the smallest absolute correlation among all pairs of SNPs within the set.
+
+`r if(params$nCS==0) "\\end{comment}"`
+
+
+<details><summary>Additional details</summary>
+
+- PIP: Posterior inclusion probability.
+
+- P-values: A local Manhattan plot for SNP significance
+
+- Z-scores: A signed test statistic, derived from the GWAS beta and standard error, indicating the strength of association for the SNP including valence
+
+- Beta coefficients: A signed test statistic indicating the change in `r if(params$coloc_format_data$type=="cc") "log(odds) of"` the trait associated with the SNP
+
+</details>
+
+```{r, include=FALSE}
+
+#Indicate which measures to plot
+plotvars=c("PIP","z","p","beta")
+
+dataset<- params$sets
+
+#Derive the summary plots using the custom function
+summaryPlots<-lapply(plotvars,ggSummaryplot,xlim=range(dataset$pos),dset=dataset,
+                     colourMapping=switch(!is.null(dataset$cs), "cs", NULL),
+                     nameColourLegend="Credible sets",build=paste0("GRCh",params$alignment),chr=dataset$chr[1])
+
+#Save figs list
+figs <- lapply(summaryPlots,function(x)x$bpfigure)
+names(figs) <- plotvars
+
+#Via patchwork align the fig panels
+max_dims <- get_max_dim(figs)
+figs<- lapply(figs,set_dim, max_dims)
+
+```
+
+##### PIPs
+
+```{r}
+figs$PIP
+```
+
+##### P-values
+
+```{r}
+figs$p
+```
+
+##### Z-scores
+
+```{r}
+figs$z
+```
+
+
+##### Beta coefficients
+
+```{r}
+figs$beta
+```
+
+<!---#### {.unlisted .unnumbered}--->
+
+#### {-}
+
+___
+
+`r if(params$nCS==0) "\\begin{comment}"`
+
+#### Linkage disequilibrium {.tabset}
+
+The following heatmaps visualise linkage disequilibrium across SNPs analysed relative to the top PIP SNPs from each credible set. The x-axis displays the SNPs ordered by genomic position; only the positions of the top PIP SNPs are marked. The bar above each plot indicates the credible set assigned to each SNP; those not assigned to a credible set are in white.
+
+##### All SNPs
+
+```{r, fig.width=10}
+params$LDheatmaps[[1]]
+```
+
+##### SNPs within credible sets
+
+```{r, fig.width=10}
+params$LDheatmaps[[2]]
+
+
+```
+
+<!---#### {.unlisted .unnumbered}--->
+
+#### {-}
+
+___
+
+`r if(params$nCS==0) "\\end{comment}"`
+
+
+
+<!--- Extra HTML to force removal of whitespace caused by the table of contents --->
+
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>
+
+

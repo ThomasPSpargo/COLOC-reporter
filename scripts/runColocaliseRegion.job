@@ -54,7 +54,7 @@ Rscript ${scriptpath}/colocaliseRegion.R \
 		--out $outpath \
 		--traits $traits \
 		--GWASconfig ${scriptpath}/GWAS_samples.txt \
-		--helperFunsDir "${scriptpath}/helper_functions"
+		--scriptsDir ${scriptpath}
 		
 echo "Running GWAS summary figure script"
 		

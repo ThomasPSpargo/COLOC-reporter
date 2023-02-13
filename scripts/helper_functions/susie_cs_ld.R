@@ -53,7 +53,7 @@ susie_cs_ld <- function(sets,R,topsnps,heatmapPalette="OrRd",discretePalette=NUL
   }
   
   
-  #Label the credible set to which each SNP belongs
+  #Label the credible set to which each top SNP belongs [the columns of the list]
   names(topSNPLD)[-1] <- sapply(names(topSNPLD)[-1],function(x){paste0(x," (",trait,":",topsnps$cs[topsnps$topsnp==x],")")})
   
   #Generate a list containing two datasets suitable for ggplot.
@@ -62,9 +62,10 @@ susie_cs_ld <- function(sets,R,topsnps,heatmapPalette="OrRd",discretePalette=NUL
   
   minimalSET$allsnps<- sets[c("snp","cs","pos")] %>%
     mutate(cs=gsub("L([0-9]+):.*",paste0(trait,":\\1"),cs)) %>%
-    right_join(topSNPLD,by = "snp") %>%
+    left_join(topSNPLD,by = "snp") %>%
     pivot_longer(cols=!all_of(c("snp","cs","pos")), names_to = "leadSNP",values_to = "corrs") %>%
-    mutate(xval=ordered(pos,levels=sort(pos),labels=snp[order(pos)])) #Fix order to correspond with genomic position
+    arrange(pos) %>% #Fix order to correspond with genomic position
+    mutate(xval=ordered(pos,levels=pos,labels=snp))
   
   #Square the corrs if plotting R2 and declare the colourbar lower limit
   if(plotR2){
@@ -94,18 +95,21 @@ susie_cs_ld <- function(sets,R,topsnps,heatmapPalette="OrRd",discretePalette=NUL
     
   },breaks=topsnps$topsnp)
   
-  #Generate a second figure matching the credible set only heatmap and generate a discrete colour scale above the plot
-  csassign<- ggplot(minimalSET$csonly,aes(y=1,x=xval,fill=cs))+
-    geom_tile()+
-    {if(!is.null(discretePalette)) scale_fill_manual(values = discretePalette) }+
-    labs(fill="Credible set")+
-    coord_cartesian(expand=FALSE)+
-    theme(axis.text = element_blank(), axis.ticks = element_blank(),axis.title = element_blank(),
-          plot.margin = unit(c(0,0,0,0), "cm"))
+  csassign<- lapply(minimalSET,function(x){
+    #Generate a second figure matching the credible set only heatmap and generate a discrete colour scale above the plot
+    ggplot(x,aes(y=1,x=xval,fill=cs))+
+      geom_tile()+
+      {if(!is.null(discretePalette)) scale_fill_manual(values = discretePalette,na.value = "white",breaks=unique(x$cs[!is.na(x$cs)])) }+
+      labs(fill="Credible set")+
+      coord_cartesian(expand=FALSE)+
+      theme(axis.text = element_blank(), axis.ticks = element_blank(),axis.title = element_blank(),
+            plot.margin = unit(c(0,0,0,0), "cm"))
+    
+  })
+
+  #With patchwork, combine the heatmap(s) with the CS assignments
+  heatmapWbar<-  mapply(function(heatmap,csBar){ csBar/heatmap+plot_layout(guides = 'collect',heights=c(1,10)) },
+                        heatmap=LDtopsnps,csBar=csassign,SIMPLIFY=FALSE)
   
-  #With patchwork, combine the CS only heatmap with the assignments
-  csOnlyHeatmap<- csassign/
-    LDtopsnps$csonly+plot_layout(guides = 'collect',heights=c(1,10))  
-  
-  return(list(heatmap_allSNPs=LDtopsnps$allsnps,heatmap_CSonly=csOnlyHeatmap))
+  return(list(heatmap_allSNPs=heatmapWbar$allsnps,heatmap_CSonly=heatmapWbar$csonly))
 }

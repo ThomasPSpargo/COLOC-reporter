@@ -170,12 +170,13 @@ ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00",
 ggsummaryplot <- lapply(opt$GWASsumplots,ggSummaryplot,
                         dset=data,
                         xlim=range(data$pos),
+                        chr=data$chr[1],
                         colourMapping=colourMapping,
                         traits=traits,
                         facetNrow=ifelse(opt$GWASsumplots_onefile,2,1),
                         nameColourLegend="Trait: Credible set",
                         facetTraits=TRUE,
-                        alignment=opt$genomeAlignment,
+                        build=paste0("GRCh",opt$genomeAlignment),
                         compareTraits=TRUE)
 
 

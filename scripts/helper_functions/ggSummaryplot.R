@@ -5,9 +5,13 @@
 # Defines a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
 #####
 
+#Inputs
+#'build' refers to genome build, e.g. 'GRCh37' while 'chr' refers to chromosome.
+#These should be provided to get a complete x-axis title. The function will fall back upon basepair positions
+
 #Define a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
 ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,traits=NULL,
-                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend=NULL,nameShapeLegend=NULL,alignment,compareTraits=FALSE){
+                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend=NULL,nameShapeLegend=NULL,build=NULL,chr=NULL,compareTraits=FALSE){
   
   #Setup y-axis parameters (and where required adjust data)
   if(tolower(yaxis)=="p"){
@@ -49,15 +53,24 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
   } 
   
   #Rescale x-axis into MBs or KBs
-  if((xlim[2]-xlim[1])>100000){
+  if((max(xlim)-min(xlim))>100000){
     xscale <- 1000000
     xscale_magnitude <- " [Mb]"
-  } else if ((xlim[2]-xlim[1])>100) {
+  } else if ((max(xlim)-min(xlim))>100) {
     xscale <- 1000
     xscale_magnitude <- " [Kb]"
   } else {
     xscale <- 1
     xscale_magnitude <- ""
+  }
+  
+  #Setup x-axis label. If Chr is provided try to give a complete legend, otherwise go just by x-limits
+  xrange<- paste0(min(xlim),"-",max(xlim))
+  if(!is.null(chr)){
+    if(!is.null(build)){ align<- build } else { align <- ""}
+    xlab<- paste0(align,ifelse(align=="","G"," g"),"enomic position",xscale_magnitude,"\n(Chr",chr,":",xrange,")")
+  } else {
+    xlab<- paste0("Position",xscale_magnitude," (",xrange,")")
   }
   
   if(!is.null(colourMapping)){ #Arrange data so that coloured points will always be plotted atop the NA values
@@ -67,6 +80,9 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
   
   #Logical to indicate whether the plot is for a measure with negative values - if yes draw a hatched line along 0
   incNegvals=min(dset[[ystring]])<0
+  
+  
+  
   
   #Supply string-based aesthetic elements via list
   aesthetics<- list(x="pos",y=ystring,colour=colourMapping,shape=shapeMapping) %>%
@@ -80,7 +96,7 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
                        breaks = scales::breaks_extended(n=4), 
                        labels = scales::label_number(scale = 1 / xscale,accuracy = 0.01) #Scale axis magnitude dynamically
     )+ 
-    labs(y=bquote(.(ylab)),x=paste0("GRCh",alignment," genomic position",xscale_magnitude,"\n(",target_region,")"))+
+    labs(y=bquote(.(ylab)),x=xlab)+
     { if(incNegvals) geom_hline(yintercept = 0,lty=2) }+
     { if(facetTraits) facet_wrap(~trait, nrow = facetNrow) }+ #Optionally add faceting
     
