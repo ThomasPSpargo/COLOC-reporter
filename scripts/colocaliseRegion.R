@@ -787,6 +787,15 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       #Combine sets object with the basedata, matched by row-index
       sets<- cbind(sets,basedata[sets$variable,c("snp","chr","pos","pvalues","beta","SE")]) #Add relevant columns from GWAS sumstats
       
+      #Quick check to catch a potential circumstance where CS have not matched to snp IDs correctly
+      sets$setmatch <- sapply(sets$cs,function(x)ifelse(x!=-1,paste0("L",x),NA_character_))
+      for(i in seq_along(susie.fit$sets$cs)){
+        setName<- names(susie.fit$sets$cs)[i]
+        overlaps<- intersect(sets$snp[which(sets$setmatch==setName)],names(susie.fit$sets$cs[[i]]))
+        if(length(overlaps)!=length(susie.fit$sets$cs[[i]])){ stop("Fine-mapping credible sets have not been correctly matched to SNPs for the report step. Please report this error since this will be a result of an unexpected issue in the workflow.") }
+      }
+      sets$setmatch <- NULL
+      
       #Save PIP summaries to file
       sets_outpath<- file.path(tabdir,paste0("susie_snp_summary_",trait,".csv"))
       write.table(sets,file=sets_outpath,sep = ",",row.names=FALSE)
@@ -800,9 +809,12 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
                thresh = if_else(!is.na(cs),as.character(snp),""))
       
       if(csFound){ #if CS are found
-        #Replicate Susie plot legend labelling
-        CSlen<- sapply(susie.fit$sets$cs,length)
-        CSmin<- susie.fit$sets$purity$min.abs.corr
+        #Replicate Susie plot legend labelling. Order credible sets numerically for plot visual consistency (numbering is otherwise arbitrary)
+        csNames<- names(susie.fit$sets$cs)
+        csNames<- csNames[order(as.numeric(gsub("L","",names(susie.fit$sets$cs))))]
+        
+        CSlen<- sapply(susie.fit$sets$cs,length)[csNames]
+        CSmin<- susie.fit$sets$purity[csNames,"min.abs.corr"] #Here matching uses rownames
         csLabs<- paste0(names(CSlen),": C=",CSlen,"/R=",round(CSmin,3))
         
         #Explicit conversion to factor for the CS to ensure correct labelling
@@ -816,7 +828,6 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
         labs(title=ifelse(is.null(names(trait)),trait,names(trait))) #Use trait name as plot title if possible
       
       ggsave(file.path(figdir,paste0("susie_PIP_",trait,".pdf")),pips,device="pdf",units="mm",width=150,height=150)
-      
       
       if(csFound){
 
@@ -998,9 +1009,9 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
     cat("Please check the resources returned in the finemapQC directory to evaluate the  alignment of summary statistic test statistics against those expected given the LD matrix.\nSee also https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
     sink()
     
-  } else if(!all(sapply(susie_rep[1:2],function(x)x$csFound))){ #Return this message on the basis of only the first two traits
+  } else if(!all(sapply(susie_rep[1:ifelse(length(susie_rep)>2,2,length(susie_rep))],function(x)x$csFound))){ #Return this message on the basis of only the first two traits
     sink(file = logfile, append = T)
-    cat(coveragePcent," credible sets were not identified for at least one of ",paste0(traits[1:2],collapse=" & "),". Therefore, coloc.susie was not used.\nAdjusting the susie_rss coverage parameter using the --finemap_CScoverage option may allow lower coverage credible sets to be identified but these should be treated with caution (See: https://chr1swallace.github.io/coloc/articles/a06_SuSiE.html).\n",sep='')
+    cat(coveragePcent," credible sets were not identified for at least one of ",paste0(traits[1:ifelse(length(traits)>2,2,length(traits))],collapse=" & "),". Therefore, coloc.susie was not used.\nAdjusting the susie_rss coverage parameter using the --finemap_CScoverage option may allow lower coverage credible sets to be identified but these should be treated with caution (See: https://chr1swallace.github.io/coloc/articles/a06_SuSiE.html).\n",sep='')
     sink()
   }
   
@@ -1100,7 +1111,7 @@ colocPriors <- lapply(colocPriors,function(x){
 coloc_performed <- character(0)
 
 #If either SuSiE call failed, a credible set has not been found for both traits, or if analysis is passed direct to coloc, run coloc.abf
-if(any(SusieFail) || !all(sapply(susie_rep[1:2],function(x)x$csFound)) || opt$runMode %in% c("doBoth","skipSusie")){  
+if(any(SusieFail) || !all(sapply(susie_rep[1:ifelse(length(traits)>2,2,length(traits))],function(x)x$csFound)) || opt$runMode %in% c("doBoth","skipSusie")){  
   
   #Run coloc.abf via do.call to allow passing of the priors list
   clc.abf<- do.call(coloc.abf,c(colocPriors$coloc.abf,list(dataset1=sums1.region, dataset2=sums2.region)))

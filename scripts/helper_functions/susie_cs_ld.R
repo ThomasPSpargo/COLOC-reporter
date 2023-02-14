@@ -96,10 +96,10 @@ susie_cs_ld <- function(sets,R,topsnps,heatmapPalette="OrRd",discretePalette=NUL
   },breaks=topsnps$topsnp)
   
   csassign<- lapply(minimalSET,function(x){
-    #Generate a second figure matching the credible set only heatmap and generate a discrete colour scale above the plot
+    #Generate a second figure matching the dataset displaying a discrete colour bar to mark credible sets above the plot
     ggplot(x,aes(y=1,x=xval,fill=cs))+
       geom_tile()+
-      {if(!is.null(discretePalette)) scale_fill_manual(values = discretePalette,na.value = "white",breaks=unique(x$cs[!is.na(x$cs)])) }+
+      {if(!is.null(discretePalette)) scale_fill_manual(values = discretePalette,na.value = "white",breaks=levels(factor(minimalSET$allsnps$cs))) }+
       labs(fill="Credible set")+
       coord_cartesian(expand=FALSE)+
       theme(axis.text = element_blank(), axis.ticks = element_blank(),axis.title = element_blank(),

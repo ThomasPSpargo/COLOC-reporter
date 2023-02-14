@@ -10,7 +10,7 @@ suppressPackageStartupMessages(library(optparse))
 option_list = list(
   
   #General options
-  make_option("--harmonisedSumstats", action="store", default="p", type='character',
+  make_option("--harmonisedSumstats", action="store", default=NULL, type='character',
               help="A file containing harmonised summary statistics across two or more traits"),
   make_option("--traits", action="store", default=NULL, type='character',
               help="Comma separated list of two trait ID for traits to analyse (e.g. 'P1,P2'), as relevant to the --harmonisedSumstats input."),
@@ -26,6 +26,8 @@ option_list = list(
               help="Indicate the reference genome to which summary statistics and LD reference are aligned. Defaults to 37."),
   make_option("--helperFunsDir", action="store", default=NULL, type='character',
               help="Filepath to directory containing helper functions used within the script"),
+  make_option("--rdsOut",action="store", default=NULL, type='character',
+              help="Specify a directory in which to return figures in an Rds file [optional]"),
   make_option("--outdir", action="store", default=NULL, type='character',
               help="Filepath to directory to which files will be written")
 )
@@ -49,7 +51,7 @@ if(test==TRUE){
   setwd("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing")
   opt <- list()
   
-  opt$harmonisedSumstats <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/harmonised_sumstats.csv"
+  opt$harmonisedSumstats <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/datasets/harmonised_sumstats.csv"
   opt$traits <- "PD,SZ"
   
   opt$GWASconfig <- "./GWAS_samples_testing.txt"
@@ -60,6 +62,8 @@ if(test==TRUE){
   opt$GWASsumplots <- c("PIP,p,beta")
   opt$GWASsumplots_onefile <- FALSE
   opt$GWASsumplots_incfinemapping <- TRUE
+  
+  opt$rdsOut <- "~/Downloads"
   
   opt$outdir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/plots"
   
@@ -155,9 +159,6 @@ if(!is.null(data$cs) && opt$GWASsumplots_incfinemapping){
   colourMapping = NULL #Set colour attribute 
 }
 
-#Declare genomic region
-target_region <- paste0("Chr",data$chr,":",min(data$pos),"-",max(data$pos))
-
 #Setup a colour palette to be used across ggplots (colours taken from plot SuSiE)
 ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00", 
               "gold1", "skyblue2", "#FB9A99", "palegreen2", "#CAB2D6", 
@@ -178,9 +179,12 @@ ggsummaryplot <- lapply(opt$GWASsumplots,ggSummaryplot,
                         facetTraits=TRUE,
                         build=paste0("GRCh",opt$genomeAlignment),
                         compareTraits=TRUE)
+names(ggsummaryplot)<- opt$GWASsumplots
 
+#Write individual plots to rds file
+if(!is.null(opt$rdsOut)){ saveRDS(ggsummaryplot,file.path(opt$rdsOut,"SummaryFigs.Rds")) }
 
-
+#If more than one file requested, concatenate
 if(opt$GWASsumplots_onefile && length(ggsummaryplot)>1){
   
   #Drop repeated x-axis text from the bp figures
@@ -192,7 +196,7 @@ if(opt$GWASsumplots_onefile && length(ggsummaryplot)>1){
   })
   
   #Align all the bp figures and traitxy figures column-wise to ensure x-axes panels are aligned correctly, then align the two columns
-  wrapped <- wrap_plots(
+  wrapOneFile <- wrap_plots(
     
     wrap_plots(lapply(ggsummaryplot,function(x)x$bpfigure),ncol=1),
     wrap_plots(lapply(ggsummaryplot,function(x)x$traitxy_figure),ncol=1),
@@ -202,20 +206,22 @@ if(opt$GWASsumplots_onefile && length(ggsummaryplot)>1){
   #Save the combined plots to file
   height=75*length(ggsummaryplot)
   ggsummaryfile <- ggsave(file.path(opt$outdir,paste0(paste0(traits,collapse="_"),"_summary_plots.pdf")),
-                          wrapped,device="pdf",units="mm",width=200,height=height)
+                          wrapOneFile,device="pdf",units="mm",width=200,height=height)
   
   
 } else {
   
-  #Patchwork wrap the plots and save to file
-  wrapped <- mapply(function(x,type){
+  #Patchwork wrap the plots individually
+  wrapped <- lapply(ggsummaryplot,function(x){
     wrap<- x$bpfigure / x$traitxy_figure+
       plot_layout(guides = 'collect',heights = c(1,2))
     
-    ggsave(file.path(opt$outdir,paste0(paste0(traits,collapse="_"),"_",type,"_summaryplot.pdf")),
-           wrap,device="pdf",units="mm",width=175,height=175)
-  }, ggsummaryplot,
-  opt$GWASsumplots,SIMPLIFY=FALSE)
+    return(wrap)
+  })
   
+  for(i in 1:length(wrapped)){
+    ggsave(file.path(opt$outdir,paste0(paste0(traits,collapse="_"),"_",names(wrapped)[i],"_summaryplot.pdf")),
+           wrapped[[i]],device="pdf",units="mm",width=175,height=175)
+  }
 }
 

@@ -13,16 +13,12 @@ params:
   P02: NULL
   P03: NULL
   rmdDir: NULL
+  summaryFigures: NULL
 ---
 
 _Please reach out to [Thomas Spargo](mailto:thomas.spargo@kcl.ac.uk) with any questions_
 
 <!---
-
-#Params unlocking developed on the basis of this answer
-https://stackoverflow.com/questions/49475303/rmarkdown-child-documents-do-not-detect-their-params?noredirect=1&lq=1
-
-
 This document is a parent report used to concatenate across smaller report sections from this analysis workflow.
 
 Each param of PO1..3 stores a list of parameters which are to be passed to the constituent child reports
@@ -31,11 +27,20 @@ P02 is a list with multiple reports derived for each trait. This chunk is theref
 
 rmdDir is the directory containing all child report template files
 
-Parameterisation of child reports derived based on ideas following:
+Parameterisation of child reports derived based on:
 https://stackoverflow.com/questions/49475303/rmarkdown-child-documents-do-not-detect-their-params
 --->
 
 ```{r, include=FALSE}
+library(patchwork)
+library(tidyverse)
+
+options(knitr.duplicate.label = "allow")
+
+knitr::opts_chunk$set(echo = FALSE,
+                      warning= FALSE,
+                      results = 'asis'
+)
 
 #Store the top-level parameters, since the params list will be replaced respectively to each child report
 parentParams <- params 
@@ -52,6 +57,8 @@ unlockBinding("params",env=environment())
 Placeholder
 
 `r if(is.null(parentParams$P01)) "\\end{comment}"`
+
+`r if(is.null(parentParams$P02)) "\\begin{comment}"`
 
 # Finemapping
 
@@ -74,6 +81,7 @@ cat(res,sep="\n\n")
 
 ```
 
+`r if(is.null(parentParams$P02)) "\\end{comment}"`
 
 `r if(is.null(parentParams$P03)) "\\begin{comment}"`
 
@@ -82,4 +90,58 @@ cat(res,sep="\n\n")
 Placeholder
 
 `r if(is.null(parentParams$P03)) "\\end{comment}"`
+
+___
+
+`r if(is.null(parentParams$summaryFigures)) "\\begin{comment}"`
+
+# SNP associations across traits {.tabset}
+
+The following figures are comparable to the SNPwise plots displayed in the finemapping report summary, comparing additionally across a pair of traits.
+
+```{r, eval=!is.null(parentParams$summaryFigures)}
+#Eval is set because this chunk tries to execute even with the prior comment
+
+#Save figs list and (for known columns) assign report-friendly names
+figs <- readRDS(parentParams$summaryFigures)
+
+
+recodes=c("p"="P-values",
+          "z"="Z-score",
+          "abs_z"="Absolute Z-score",
+          "pip"="PIPs",
+          "beta"="Beta coefficients")
+
+names(figs) <- dplyr::recode(names(figs),!!!recodes)
+
+#Patchwork wrap the plots
+figs <- lapply(figs,function(x){
+  wrap<- x$bpfigure / x$traitxy_figure+
+    plot_layout(guides = 'collect',heights = c(1,2))
+  
+  return(wrap)
+})
+
+```
+
+
+```{r}
+#Declare the template for the dynamic tabs
+template <- c(
+  "\n\n## {{names}}",
+  "```{r, fig.height=8, fig.width=8}",
+  "figs[[{{num}}]]",
+  "```")
+
+tabs <- mapply(function(num,names) knitr::knit_expand(text = template),
+               num=seq_along(figs),names=names(figs))
+
+res<- knitr::knit(text = unlist(tabs),quiet=TRUE)
+cat(res,sep="\n\n")
+```
+
+
+`r if(is.null(parentParams$summaryFigures)) "\\end{comment}"`
+
+___
 
