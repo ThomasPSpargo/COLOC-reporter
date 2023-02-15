@@ -77,7 +77,6 @@ test <- FALSE # test <- TRUE
 if(test==TRUE){
   #####
   setwd("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing")
-  opt <- list()
   
   # # #TESTING V3
   opt$set_locus <- "17,43460501,44865832"
@@ -986,7 +985,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   
 } else {
   #If susie is skipped entirely, produce some dummy values required for subsequent logic checks
-  susie_rep <- sapply(seq_along(sums.region),function(x)list(csFound=FALSE))
+  susie_rep <- lapply(seq_along(sums.region),function(x)list(csFound=FALSE))
     
   SusieFail <- sapply(seq_along(sums.region),function(x) FALSE)
   
@@ -1078,7 +1077,7 @@ if(any(SusieFail) || !all(sapply(susie_rep[1:ifelse(length(traits)>2,2,length(tr
   write.table(Sum_abf,file=file.path(tabdir,"results_summary_coloc_abf.csv"),sep = ",",row.names=FALSE,col.names = FALSE,quote = FALSE)
   
   #Save PP.H4.abf summaries, with additional details to file
-  sets_outpath<- file.path(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv")
+  sets_outpath<- file.path(tabdir,"coloc.abf_snpwise_PP_H4_abf.csv")
   
   #Store in plotdata option for potential plotting
   plotdata.abf <- sums1.region %>%
@@ -1144,9 +1143,7 @@ if(!any(SusieFail) && all(sapply(susie_rep[1:2],function(x)x$csFound)) && opt$ru
 label_limit <- ceiling(length(snplist)*0.05)
 
 #However, limit the top number of snps to 10 at most 
-if(label_limit>10){
-  label_limit <- 10
-}
+if(label_limit>10){ label_limit <- 10 }
 
 toPlot<- list()
 
@@ -1299,12 +1296,7 @@ for(i in 1:length(toPlot)){
       write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
     
     sink(file = logfile, append = T)
-    
-    if(current=="susie"){
-      cat("\nGenes located within a 10Kb window around the top 10% of snps from current pair of SuSiE credible sets are tabulated in: ", basename(sets_outpath),"\n")
-    } else {
-      cat("\nGenes located within a 10Kb window around the top 10% of coloc.abf snps are tabulated in: ", basename(sets_outpath),"\n")
-    }
+    cat("\nGenes located within a 10Kb window around the colocalisation 95% credible set from",ifelse(current=="susie","the current pair of SuSiE credible sets","coloc.abf"), "are tabulated in:", basename(sets_outpath),"\n")
     sink()
     
     #If subsetting to named gene sources, generate the vector, and cat message to file if no rows would remain
@@ -1376,18 +1368,11 @@ for(i in 1:length(toPlot)){
   } else { #Conditional statement for when no nearby genes are found
     
     sink(file = logfile, append = T)
-    
-    if(("coloc.susie" %in% coloc_performed && !"coloc.abf" %in% coloc_performed) ||
-       ("coloc.susie" %in% coloc_performed && "coloc.abf" %in% coloc_performed && i!=1)
-    ){
-      cat("\nNo genes were identified within a 10Kb window around snps from the current credible sets comparison:",gsub("_"," & ",cs_filenm),".\n")
-    } else {
-      cat("\nNo genes were identified within a 10Kb window around the top 10% of coloc.abf snps.\n")
-    }
+    cat("\nNo genes were identified within a 10Kb window around the colocalisation 95% credible set from ",ifelse(current=="susie",paste0("the current SuSiE credible sets comparison:",gsub("_"," & ",cs_filenm)),"coloc.abf"),".\n",sep="")
     sink()
     
   }
-} 
+}
 } #Bracket indicating the end of the else condition performed when opt$runMode!="finemapOnly"
 
 ######
@@ -1424,6 +1409,6 @@ renderReport(template=file.path(normalizePath(opt$scriptsDir),"rmd","parent_repo
 
 sink(file = logfile, append = T)
 cat("------------------------------\n")
-cat("An html report overviewing the complete analysis can be found in:", basename(finalRep))
-cat("The report currently only contains the finemapping step. Please review this log for other steps and the plots directory for figures comparing across traits used for colocalisation analysis.\n")
+cat("An html report overviewing the SuSiE finemapping analysis and quality control can be found in:", basename(finalRep))
+cat("Please review this log for other steps and the plots directory for figures comparing across traits used for colocalisation analysis.\n")
 sink()

@@ -24,7 +24,9 @@ option_list = list(
   make_option("--returnPvalue", action="store", default=FALSE, type='logical',
               help="False by default. Set TRUE to include p-values for the regions extracted. Note that if --useFDR is true, then two columns will be returned. first p and the p following fdr adjustment."),
   make_option("--fullRowsToFile", action="store", default=NULL, type='character',
-              help="Specify a file path to return an additional tab-separated output file including all signifciant rows."),
+              help="Specify a file path to return an additional tab-separated output file including all rows below the threshold set."),
+  make_option("--everythingToFile", action="store", default=NULL, type='character',
+              help="Specify a file path to return an additional tab-separated output file including all rows. This is primarily for writing out the file with all accompanying FDR adjusted p-values."),
   make_option("--regionWindow", action="store", default=0, type='numeric',
               help="0 by default. Specify an additional number of base pairs to include around the region identified by LAVA")
 )
@@ -89,6 +91,17 @@ for(i in 1:length(files)){
       cols <- c(cols,pcols)
       cat("Output file will contain:", paste(pcols,collapse=" & "),"\n")
     }
+    
+  }
+  
+  if(!is.null(opt$everythingToFile)){
+    write.table(lavabivar[rows,],
+                file=opt$everythingToFile,
+                quote=FALSE,
+                append=FALSE,
+                sep="\t",
+                col.names = TRUE,
+                row.names = FALSE)
     
   }
   

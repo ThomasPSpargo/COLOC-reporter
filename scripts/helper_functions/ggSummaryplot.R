@@ -90,7 +90,7 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
   
   #Generate plot
   pos_fig <- ggplot(dset,aes(!!!aesthetics))+
-    geom_point()+
+    geom_point(na.rm=TRUE)+
     theme_bw()+
     scale_x_continuous(limits = xlim,
                        breaks = scales::breaks_extended(n=4), 
@@ -126,7 +126,7 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
       annotate("rect",xmin=-Inf,xmax=Inf,ymin=-Inf,ymax=Inf,alpha=0.1,colour="azure4")+
       lims(x=lims,y=lims)+
       labs(x=bquote({.(ylab)[~(.(traits[1]))]},splice=TRUE),y=bquote({.(ylab)[~(.(traits[2]))]},splice=TRUE))+
-      geom_point()+
+      geom_point(na.rm = TRUE)+
       theme_bw()+
       #facet_wrap(~var,labeller=label_parsed)+ #Alternatively, use facet wrap (with mutate), for labelling based on a facet strip
       { if(incNegvals) list(geom_hline(yintercept = 0,lty=2),

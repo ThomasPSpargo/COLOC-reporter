@@ -62,7 +62,7 @@ Placeholder
 
 # Finemapping
 
-```{r, results='asis', echo=FALSE}
+```{r, results='asis',eval=!is.null(parentParams$P02), echo=FALSE}
 
 #Declare the template for the dynamic tabs; ie. the knitted report
 template <- c(
@@ -122,10 +122,6 @@ figs <- lapply(figs,function(x){
   return(wrap)
 })
 
-```
-
-
-```{r}
 #Declare the template for the dynamic tabs
 template <- c(
   "\n\n## {{names}}",
