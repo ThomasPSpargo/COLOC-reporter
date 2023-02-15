@@ -27,7 +27,9 @@ option_list = list(
   make_option("--force_matrix", action="store", default=FALSE, type='logical',
               help="If TRUE, the LD matrix will always be recomputed using PLINK. If FALSE, the default, the LD matrix will only be computed if the expected ld_matrix.snplist and ld_matrix.ld files are absent from the <output>/LDmatrix directory."),
   make_option("--finemapQC_handleBetaFlips", action="store", default="drop", type='character',
-              help="The SuSiE kriging_rss function is used to check whether observed Z-scores (calculated from beta and SE) correspond with expected Z-scores based on information from the LD matrix and other SNPs. This check indicates if any SNP effect estimates appear like they may be reversed. Set this option to 'flip' to automatically reverse the direction of betas with test statistics identified as inverted on a trait-by-trait basis, or to 'drop' to remove them from all traits across analyses; the option defaults to 'drop'. The check for potentially flipped alleles will be performed but the data used for subsequent analysis will be unchanged if any other strings are passed to this option. Note that the setting applied here will affect both the finemapping and colocalisation analysis steps, but will only be applied in circumstances when SuSiE finemapping is performed."),
+              help="The SuSiE kriging_rss function is used to check whether observed Z-scores (calculated from beta and SE) correspond with expected Z-scores based on information from the LD matrix and other SNPs. This check indicates if any SNP effect estimates appear to be reversed. Set this option to 'flip' to automatically reverse the direction of betas with test statistics identified as inverted on a trait-by-trait basis, or to 'drop' to remove them from all traits across analyses; the option defaults to 'drop'. The check for potentially flipped alleles will always be performed at least once but the data used for subsequent analysis will be unchanged if any other strings are passed to this option. Note that the setting applied here will affect both the finemapping and colocalisation analysis steps, but will only be applied in circumstances when SuSiE finemapping is performed. Note also that the recursion behavior of this check is adjusted using the --finemapQC_limitCheckBetaFlips option."),
+  make_option("--finemapQC_limitCheckBetaFlips", action="store", default=10, type='numeric',
+              help="Related to the --finemapQC_handleBetaFlips option. Define the max number of recursive checks for reversed statistic encoding before breaking the loop. This arbitrarily defaults to 10, a limit which seems unlikely to be hit in a dataset with largely correct allele encoding. Setting 0 means that the check will be performed once only."),
   make_option("--finemap_CScoverage", action="store", default=0.95, type='numeric',
               help="Numeric between 0 and 1 to indicate the credible set threshold to use for finemapping; defaults to 0.95, which returns 95% credible sets."),
   make_option("--finemap_refine", action="store", default=FALSE, type='logical',
@@ -87,21 +89,11 @@ if(test==TRUE){
   opt$runMode <- 'doBoth'
   opt$force_matrix <- FALSE
   
-  opt$finemapQC_handleBetaFlips <- 'drop'
-  opt$finemap_CScoverage <- 0.95
-  
   opt$gene_tracks <- 40
   opt$restrict_nearby_gene_plotting_source <- "HGNC Symbol"
   opt$genomeAlignment <- 37
   
   opt$scriptsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts"
-  
-  opt$priors_coloc.abf <- "1e-4,1e-4,1e-5"
-  opt$priors_coloc.susie <-"1e-04,1e-04,5e-06"
-  
-  opt$finemap_initialL <- 10
-  opt$finemap_increaseL <- TRUE
-  opt$finemap_refine <- FALSE
   
 }
 
@@ -117,10 +109,10 @@ Config_msg <- paste0("Summary statistic configuration options set according to t
 #Assign names to traits
 names(traits) <- GWASconfig[traits,on="ID"]$traitLabel
 
+#Set up directories across which outputs are returned
 opt$out <- paste0(opt$out,"_coloc")
 if(!dir.exists(opt$out)){dir.create(opt$out,recursive = TRUE)}
 
-#Set up directories across which outputs are returned
 figdir <- file.path(opt$out,"plots")
 if(!dir.exists(figdir)){dir.create(figdir)}
 tabdir <- file.path(opt$out,"tables")
@@ -472,16 +464,18 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   cat("\n######\n### SuSiE finemapping quality control\n######\n")
   sink()
   
-  ## Add initial elements to the finemapping reports.
+  ## Add initial elements to the finemapping report params lists.
   
   #The number of SNPs in the datasets prior to finemapping QC, the cs coverage, genome alignment, the name of each trait.
-  invisible(mapply(assignToList,x=paste0("RMD_finemap_",traits),value=traits,name="trait"))
-  invisible(lapply(paste0("RMD_finemap_",traits),assignToList,value=length(sums.region[[1]]$snp),name="initNsnp"))
-  invisible(lapply(paste0("RMD_finemap_",traits),assignToList,value=coveragePcent,name="coverage"))
-  invisible(lapply(paste0("RMD_finemap_",traits),assignToList,value=opt$genomeAlignment,name="alignment"))
-  
-  #Nominal exclusion boundary [option under-testing, may not make sense]
-  #opt$finemapQC_dropZOutliers <- NA#3
+  #To avoid stripping away trait names, assign traits within a loop rather than with mapply
+  for(i in seq_along(traits)){
+    assignToList(x=paste0("RMD_finemap_",traits[i]),multi=TRUE,
+                 value=list(trait=traits[i],
+                            initNsnp=length(sums.region[[i]]$snp), #initNsnp should always be fully harmonised across traits
+                            coverage=coveragePcent,
+                            alignment=opt$genomeAlignment)
+    )
+  }
   
   susieQC <- mapply(function(dset,trait){
       ## Compare observed z-scores with LD matrix [warning thrown when LD matrix is not semi-definite...]
@@ -492,126 +486,97 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
       
       #Add extra info for writing to file
-      checkTofile<- c("trait"= trait, "any_flips"=FALSE,round(checkLD,5))
-      
-      #Write finemapping summary to a file and write without names if file exists already
-      LDcheckFile<- file.path(finemapQCdir,"check_sumstat_LDconsistency.csv")
-      write.table(t(checkTofile),
-                  file=LDcheckFile,sep = ",", row.names=FALSE,col.names = !file.exists(LDcheckFile),append = file.exists(LDcheckFile))
+      checkTofile<- data.frame(t(c("trait"= trait, "n_flips"=0,round(checkLD,5))))
       
       ### Check for allele flip issues
       #Compare observed and expected Z-scores
-      z_compare<- kriging_rss(
-        z=z_sc,
-        R=dset$LD,
-        n=max(dset$N),
-        r_tol = 1e-08,
-        s = checkLD[[1]]
-      )
-      zPlot<- z_compare$plot
-      
-      # if(!is.na(opt$finemapQC_dropZOutliers)){
-      #   
-      #   #Add hatched lines to plot at exclusion boundaries
-      #   zPlot <- zPlot+  
-      #     geom_abline(slope=1,intercept=opt$finemapQC_dropZOutliers,lty=2)+
-      #     geom_abline(slope=1,intercept=-opt$finemapQC_dropZOutliers,lty=2)
-      #   
-      #   ## Compare the difference between observed and expected z-scores
-      #   diffs<-  with(z_compare$conditional_dist,
-      #                 abs(z-condmean))
-      #   exclIndex<- diffs>opt$finemapQC_dropZOutliers #Identify index positions for 'out of bounds' Z-score snps
-      #   
-      # } else {
-      #  exclIndex = NULL
-      # }
+      z_compare<- kriging_rss(z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08,s = checkLD[[1]])
+      zPlot<- list("0 flips"=z_compare$plot)
       
       #Determine snps with betas that may be flipped; this check corresponds with the one implemented by internally by kriging_rss
+      #possFlipped stores the number of flips detected in a single recursion of the check
+      #flipIndex stores a list across all recursions which will later be reduced down to provide a final index
+      #nPossFlipped stores a cumulative record of the number of SNPs recorded as flipped
       possFlipped<- with(z_compare$conditional_dist,
                          logLR>2 & abs(z)>2)
+      flipIndex <- list(possFlipped)
       nPossFlipped<- sum(possFlipped)
       
-      if(nPossFlipped>0){ #If any outliers replot the figure in a circumstance where these are flipped
-        z_sc_flip <-z_sc
-        z_sc_flip[possFlipped]<- -z_sc_flip[possFlipped]
-        
-        #Repeat s-estimation after flips
-        checkLD_flipped<- sapply(checkMthd,estimate_s_rss,z=z_sc_flip, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
-        checkTofile_flipped<- c("trait"= trait, "any_flips"=TRUE,round(checkLD_flipped,5)) #Add extra info for writing to file
-        
-        checkTofile<- cbind(checkTofile,checkTofile_flipped) #Concatenate both versions
-        
-        
-        #Write finemapping summary to a file and write without names if file exists already
-        LDcheckFile<- file.path(finemapQCdir,"check_sumstat_LDconsistency.csv")
-        write.table(t(checkTofile_flipped),
-                    file=LDcheckFile,sep = ",",row.names=FALSE,col.names = !file.exists(LDcheckFile),append = file.exists(LDcheckFile))
-        
-        #Compare observed and expected Z-scores
-        z_compare_flip <- kriging_rss(
-          z=z_sc_flip,
-          R=dset$LD,
-          n=max(dset$N),
-          s = checkLD_flipped[[1]] 
-        )
-        zPlotFlip<- z_compare_flip$plot #Extract plot
-        
-        # if(!is.na(opt$finemapQC_dropZOutliers)){ #If removing extreme values
-        #   #Plot the boundary lines
-        #   zPlotFlip <- zPlotFlip +
-        #     geom_abline(slope=1,intercept=opt$finemapQC_dropZOutliers,lty=2)+
-        #     geom_abline(slope=1,intercept=-opt$finemapQC_dropZOutliers,lty=2)
-        #   
-        #   ## Compare the difference between observed and expected z-scores
-        #   diffs_flipped<-  with(z_compare_flip$conditional_dist,
-        #                         abs(z-condmean))
-        #   exclIndex_flip<- diffs_flipped>opt$finemapQC_dropZOutliers #Identify index positions for 'out of bounds' Z-score snps
-        # } else {
-        #   exclIndex_flip = NULL
-        # }
-        
-        #Patchwork combine with and measured flips with and without encoding 
-        zPlot<- zPlot+labs(subtitle = "Initial encoding")+
-          zPlotFlip+labs(subtitle = "Reversing putative statistic flips")+theme(axis.title.y = element_blank())
-        
-      } #else {
-        #exclIndex_flip = NULL
-      #}
+      #Recursively loop (according to the setting of --finemapQC_limitCheckBetaFlips) to test for inverted summary statistic estimate issues
+      #The repeated check is recommended in the Zou et al. 2022 paper to ensure all flips are identified
+      if(opt$finemapQC_limitCheckBetaFlips>0){
+        nloops <- 0 #Flag variable for limiting the while loop
+        while(any(possFlipped)){ #If any outliers replot the figure in a circumstance where these are flipped
+          nloops <- nloops+1
+          
+          z_sc[possFlipped]<- -z_sc[possFlipped] #Flip the flagged indices
+          
+          #Re-compare observed and expected Z-scores
+          z_compare_flip <- kriging_rss(z=z_sc,R=dset$LD,n=max(dset$N))
+          
+          #Determine SNPs with betas that are currently flagged for potential flips and append to the flip index list
+          possFlipped<- with(z_compare_flip$conditional_dist,
+                             logLR>2 & abs(z)>2)
+          flipIndex <- c(flipIndex,list(possFlipped))
+          
+          #Save elements (the cumulative number of flipped snps, and the new flip plot)
+          #The plot name details the number of flips BEFORE plotting, nPossFlipped identifies the number as a result of the plot
+          zPlot <- c(zPlot,list(z_compare_flip$plot))
+          names(zPlot)[length(zPlot)] <- paste(max(nPossFlipped),"flips")
+          
+          nPossFlipped[length(nPossFlipped)+1]<- sum(possFlipped)+nPossFlipped[length(nPossFlipped)]
+          
+          if(any(possFlipped) && opt$finemapQC_limitCheckBetaFlips==nloops){
+            warning("The recursion limit defined in --finemapQC_limitCheckBetaFlips was hit during the repeated observed and expected Z-score consistency check for ",trait,". If this is unexpected please review the diagnostic plots returned in the .html report or finemapQC directory.")
+            break
+          }
+        }
+      }
       
+      if(any(rowSums(as.data.frame(flipIndex))>1)){
+        warning("During the repeated observed and expected Z-score consistency check for ",trait,", at least one variant was flagged more than once (i.e. after the first flip it was again identified as an outlier). Please check the data carefully.")
+      }
+      
+      #Reduce the flip index into a single logical vector
+      flipIndex <- Reduce(`|`, flipIndex)
+        
       #Save the plot
       z_check_outpath <- file.path(finemapQCdir,paste0("Z_score_alignment_",trait,".pdf"))
-      ggsave(z_check_outpath,zPlot,device="pdf",units="mm",width=150,height=100)
+      pdf(z_check_outpath,height=6,width=6)
+      for (i in seq_along(zPlot)) print(zPlot[[i]]+labs(subtitle=paste0("Check performed following a cumulative n = ",names(zPlot[i]))))
+      dev.off()
+      
+      if(max(nPossFlipped)>0){ # If any flips repeat s-estimation after flips
+        checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
+        
+        #Add extra info for writing to file
+        checkTofile<- rbind(checkTofile,
+                            data.frame(t(c("trait"= trait, "n_flips"=max(nPossFlipped),round(checkLD,5))))
+        )
+      }
+      
+      # #Write finemapping summary to a file and write without names if file exists already
+      LDcheckFile<- file.path(finemapQCdir,"check_sumstat_LDconsistency.csv")
+      write.table(checkTofile,
+                  file=LDcheckFile,sep = ",",row.names=FALSE,col.names = !file.exists(LDcheckFile),append = file.exists(LDcheckFile))
+      
       
       #Add multiple elements to report:
       #Z-plot 
       #LD 's' consistency check; this could have one or two rows according to whether any potential encoding flips were flagged
       #Number of possible allele flips
       assignToList(x=paste0("RMD_finemap_",trait),multi=TRUE,
-                   value=list(nPossFlipped=nPossFlipped,
-                              init_s_estimate=data.frame(t(checkTofile)),
+                   value=list(nPossFlipped=max(nPossFlipped),
+                              init_s_estimate=checkTofile,
                               zPlot=zPlot))
     
       #Report relevant messages to the logfile
       sink(file = logfile, append = T)
       cat("\nQuality control for ",trait,":\n",sep="")
-      cat(nPossFlipped,ifelse(nPossFlipped==1," SNP was"," SNPs were")," flagged for potentially flipped allele encoding", ifelse(nPossFlipped>0," (marked red on the diagnostic plot returned in the finemapQC directory).\n",".\n"),sep="")
-      # if(!is.na(opt$finemapQC_dropZOutliers)){
-      #   cat(sum(exclIndex),ifelse(sum(exclIndex)==1,"SNP was","SNPs were"),"flagged with high discrepancy between expected and observed Z-scores.\n")
-      #   if(!is.null(exclIndex_flip)) cat("After repeating check with flipped allele encoding,",sum(exclIndex_flip), "would remain as Z-score outliers.\n")
-      # }
+      cat(max(nPossFlipped),ifelse(max(nPossFlipped)==1," SNP was"," SNPs were")," flagged for potentially flipped allele encoding", ifelse(max(nPossFlipped)>0," (marked red on the diagnostic plot returned in the finemapQC directory).\n",".\n"),sep="")
       sink()
-      
-      # #If flipping is to be performed, exclude based on outliers after the flipping stage
-      # if(opt$finemapQC_handleBetaFlips=="flip" && !is.null(exclIndex_flip)){
-      #   exclIndex<- exclIndex_flip
-      # }
-      
-      #if(is.null(exclIndex)){ #If nothing to exclude, set a vector of FALSE values
-        exclIndex <- rep(FALSE,length(dset$snp))
-      #}
-      
      
-      return(list(conditional_dist=z_compare$conditional_dist,toFlip=possFlipped,toExclude=exclIndex))
+      return(list(conditional_dist=z_compare$conditional_dist,toFlip=flipIndex))
       
   },sums.region,traits,SIMPLIFY = FALSE)
   
@@ -624,18 +589,8 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   #If flipping, this will be handled per-trait, if dropping, this will be done by global index
   globalFlips <- Reduce(`|`, lapply(susieQC,function(x) x$toFlip))
   
-  #Across traits, identify which positions have been identified as outliers and remove problematic SNPs from all traits
-  #This currently does nothing, but object is assigned to prevent any downstream errors
-  globalExclude<- Reduce(`|`, lapply(susieQC,function(x) x$toExclude))
-  
   #If set, adjust each sumstats to remove or flip outlier records
-  if( 
-    ( opt$finemapQC_handleBetaFlips %in% c("drop","flip") && any(globalFlips) )# ||
-    #( !is.na(opt$finemapQC_dropZOutliers) && any(globalExclude) ) 
-  ){
-    
-    #Logical indicating whether the exclusion step is to be conducted; only if there are records to exclude and if this wouldnt remove ALL records
-    #doExcludeStep<- !is.na(opt$finemapQC_dropZOutliers) && any(globalExclude) && any(!globalExclude)
+  if(opt$finemapQC_handleBetaFlips %in% c("drop","flip") && any(globalFlips)){
     
     #Logical tests indicating how allele flipping steps should proceed (i.e. with flipping, or with dropping)
     doFlipStep <- tolower(opt$finemapQC_handleBetaFlips)=="flip" && any(globalFlips)
@@ -645,29 +600,18 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
     sink(file = logfile, append = T)
     if(doFlipStep){ cat("Summary statistic betas will be flipped per-trait for all SNPs indicated to have reversed allele order.\n")
     } else if(doFlipDROPStep){ cat("SNPs identified as likely to have flipped test statistics in any trait will be removed...\n") }
-    #if(doExcludeStep) { cat("SNPs flagged as extreme Z-score outliers",ifelse(doFlipStep,"after flipping betas",""),"in any trait will be removed...\n") } 
     sink()
     
     #Across datasets flip betas/drop SNPs according to settings
-    sums.region <- mapply(function(dset,QC,trait,globalExcl,flipDrop){
+    sums.region <- mapply(function(dset,QC,trait,flipDrop){
       
       #According to doFlipStep and doFlipDROPStep logicals flip or drop problematic beta coefficients.
       #Flipping is handled on a trait-by-trait basis while dropping is global to keep datasets harmonised
-      if(doFlipStep){
-        dset$beta[QC$toFlip] <- -dset$beta[QC$toFlip]
-      } else if(doFlipDROPStep){
-        dset<- dropSNPs(dset,flipDrop)
-        globalExcl<- globalExcl[!flipDrop] #If dropping has been performed, then filter the the second exclusion step to ensure correct indexing
-      }
-      
-      # if(doExcludeStep){
-      #   #With custom function, remove snps that are marked as candidates for flipping
-      #   dset<- dropSNPs(dset,QC$globalExcl)
-      # }
-      
+      if(doFlipStep){ dset$beta[QC$toFlip] <- -dset$beta[QC$toFlip]
+      } else if(doFlipDROPStep){ dset<- dropSNPs(dset,flipDrop) }
       return(dset)
     }
-    ,sums.region,susieQC,traits,MoreArgs = list(globalExcl=globalExclude,flipDrop=globalFlips),SIMPLIFY = FALSE)
+    ,sums.region,susieQC,traits,MoreArgs = list(flipDrop=globalFlips),SIMPLIFY = FALSE)
     
     #Save IDs for SNPs that have been dropped to file (if any)
     isDropped<- !snplist %in% sums.region[[1]]$snp
@@ -676,8 +620,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
             file=file.path(finemapQCdir,"FinemapQC_droppedSNPs.txt")
       )}
     
-    if(#doExcludeStep || 
-      doFlipDROPStep){ #Report message indicating how subsetting
+    if(doFlipDROPStep){ #Report message indicating how subsetting
       sink(file = logfile, append = T)
       cat("A total of",length(sums.region[[1]]$snp),"SNPs remain.\n")
       if(any(isDropped)) cat("An index of removed snps can be found in the following file: FinemapQC_droppedSNPs.txt")
@@ -690,8 +633,6 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   #Always return the final number of SNPs in the main report
   invisible(lapply(paste0("RMD_finemap_",traits),assignToList,value=length(sums.region[[1]]$snp),name="finalNsnp"))
   
-  # backup_QC_reportPD<- RMD_finemap_PD
-  # backup_QC_report_SZ<- RMD_finemap_SZ
   sink(file = logfile, append = T)
   cat("\n######\n### SuSiE finemapping results\n######\n\n")
   sink()
@@ -976,7 +917,6 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   
   #Identify the objects storing files to write to a report
   finemapReports<- grep("RMD_finemap_",ls(envir=.GlobalEnv),value=TRUE)
-  
   
   #Render the QC report per-trait
   invisible(mapply(renderReport,
@@ -1464,7 +1404,7 @@ for(i in 1:length(toPlot)){
 finemapReports<- grep("RMD_finemap_",ls(envir=.GlobalEnv),value=TRUE)
 if(length(finemapReports)>0){
   P02<- lapply(finemapReports,get)
-  names(P02) <- lapply(P02,function(x)x$trait)
+  names(P02) <- lapply(P02,function(x)unlist(x$trait))
 }
 
 #Create a concatenated list of all the params to pass to the parent report
@@ -1475,7 +1415,6 @@ prm<-list(P01=switch(exists("P01"),P01,NULL),
 
 #Declare the file name
 finalRep<- file.path(normalizePath(opt$out),"analysis_report.html")
-
 
 #Render the parent report
 renderReport(template=file.path(normalizePath(opt$scriptsDir),"rmd","parent_report.Rmd"),

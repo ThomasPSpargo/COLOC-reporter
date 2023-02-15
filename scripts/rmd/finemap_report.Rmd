@@ -48,8 +48,8 @@ knitr::opts_chunk$set(echo = FALSE,
 )
 
 #Declare how the trait will be named throughout the report; use friendly names if provided
+#traitname <- ifelse(!is.null(names(params$trait[[1]])),names(params$trait[[1]]),params$trait[[1]])
 traitname <- ifelse(!is.null(names(params$trait)),names(params$trait),params$trait)
-  
 
 #reformat NA values as just a dash
 options(knitr.kable.NA = '-',digits = 3)
@@ -63,7 +63,7 @@ __Quality control__
 
 Before finemapping quality control, `r params$initNsnp` SNPs were included in the dataset. Following QC across all traits using the current settings, `r params$finalNsnp` SNPs remain.
 
-While comparing observed and expected Z-scores, `r params$nPossFlipped` `r ifelse(params$nPossFlipped==1," SNP was"," SNPs were")` flagged in the `r traitname` dataset for having allele encoding which may be inverted.
+While comparing observed and expected Z-scores, `r params$nPossFlipped` `r ifelse(params$nPossFlipped==1," SNP was"," SNPs were")` flagged in the `r traitname` dataset for having allele encoding which may be inverted. This check was repeated `r length(params$zPlot)-1` `r ifelse((length(params$zPlot)-1)==1,"time","times")` in an adjusted dataset after inverting the effect estimate for previously flagged SNPs until no further variants were identified or the set recursion limit was hit.
 
 The check of LD matrix and summary statistic consistency estimated `r paste0("$s=",round(params$final_s_estimate,3),"$")` in the final dataset.
 
@@ -83,24 +83,46 @@ The SuSiE [`estimate_s_rss`](https://stephenslab.github.io/susieR/reference/esti
 
 This check was first applied to the data before any other quality control step. `r if(nrow(params$init_s_estimate)>1) "Since at least 1 SNP was identified as having potentially flipped allele encoding in the subsequent Z-score check, this first check was repeated after reversing the valence of any flagged SNPs."`
 
-``` {r}
+``` {r, eval=!is.null(params$init_s_estimate)}
 
 kable(params$init_s_estimate,align = "c",
-      col.names = c('Trait ID', 'Were any effect estimates reversed',colnames(params$init_s_estimate)[3:5]),
+      col.names = c('Trait ID', 'Estimate following n flips',colnames(params$init_s_estimate)[3:5]),
       row.names=FALSE) %>%
     kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
     add_header_above(c(" " = 2, "Estimation method" = 3))
 
 ```
 
-The check was repeated with final dataset used for finemapping (post-quality control) and the null.mle method estimated that `r paste0("$s=",round(params$final_s_estimate,3),"$")`.
+The check was repeated with the the null.mle method only in the dataset used for finemapping (i.e. post-quality control), which estimated that `r paste0("$s=",round(params$final_s_estimate,3),"$")`.
 
 #### Observed and expected Z-scores
 
-The SuSiE [`kriging_rss`](https://stephenslab.github.io/susieR/reference/kriging_rss.html) function checks whether observed Z-scores correspond with those expected based on information from the LD matrix and the effects observed for other SNPs (see function documentation and the following [vignette](https://stephenslab.github.io/susieR/articles/susierss_diagnostic.html) for details). As part of this check, this flags any SNPs with test statistic effect estimates which may be inverted. These SNPs are marked in red on the plot returned by the function.
+The SuSiE [`kriging_rss`](https://stephenslab.github.io/susieR/reference/kriging_rss.html) function visualises a comparison between observed Z-scores and those expected based on information from the LD matrix and the effects observed for other SNPs (see function documentation and the following [vignette](https://stephenslab.github.io/susieR/articles/susierss_diagnostic.html) for details). This check flags any SNPs with test statistic effect estimates which may be inverted, marking any identified in red on the diagnostic plot returned.
+
+This check was performed based on the initial summary statistic encoding and then, if any SNPs were flagged as having potentially inverted effect estimates, repeated recursively until no further inversions were identified or the set recursion limit was hit. The following tabs display each of these checks.
+
+##### Check performed following cumulative number of flips {.tabset}
 
 ```{r}
-params$zPlot
+
+figs <- params$zPlot
+
+#Via patchwork align the fig panels
+max_dims <- get_max_dim(figs)
+figs<- lapply(figs,set_dim, max_dims)
+
+#Declare the template for the dynamic tabs
+template <- c(
+  "\n\n###### {{names}}",
+  "```{r}",
+  "figs[[{{num}}]]",
+  "```")
+
+tabs <- mapply(function(num,names) knitr::knit_expand(text = template),
+               num=seq_along(figs),names=names(figs))
+
+res<- knitr::knit(text = unlist(tabs),quiet=TRUE)
+cat(res,sep="\n\n")
 ```
 
 `r if(params$nCS<1) "\\begin{comment}"`
@@ -257,8 +279,6 @@ params$LDheatmaps[[1]]
 
 ```{r, fig.width=10}
 params$LDheatmaps[[2]]
-
-
 ```
 
 <!---#### {.unlisted .unnumbered}--->
