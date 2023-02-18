@@ -9,29 +9,38 @@ output:
     toc_float: true
     
 params:
-  P01: NULL
-  P02: NULL
-  P03: NULL
+  P01: "P01.Rds"
+  P02: "P02.Rds"
+  P03: "P03.Rds"
+  summaryFigures: "SummaryFigs.Rds"
   rmdDir: NULL
-  summaryFigures: NULL
+  rdsInputDir: NULL
+  funsDir: NULL
+  rmIntermediates: TRUE
 ---
 
 _Please reach out to [Thomas Spargo](mailto:thomas.spargo@kcl.ac.uk) with any questions_
 
 <!---
-This document is a parent report used to concatenate across smaller report sections from this analysis workflow.
+This document is a parent report used to concatenate across smaller report sections from the COLOC-reporter workflow.
 
-Each param of PO1..3 stores a list of parameters which are to be passed to the constituent child reports
+Each param of P01..3 stores a list of parameters which are to be passed to the constituent child reports
 
-P02 is a list with multiple reports derived for each trait. This chunk is therefore generated recursively.
+P02 is a list with params required to generate multiple reports, individually for each trait. This chunk is therefore generated recursively.
 
-rmdDir is the directory containing all child report template files
+ - summaryFigures points to an Rds file containing a list of summary plots between trait pairs that were finemapped
 
-Parameterisation of child reports derived based on:
-https://stackoverflow.com/questions/49475303/rmarkdown-child-documents-do-not-detect-their-params
+ - rmdDir is the directory containing all child report template files
+
+ - rdsInputDir points to a single directory within which to look to find the expected input files. When provided, only the basename needs to be specified for each input file, and these all have sensible defaults.
+
+ - rmIntermediates is a logical triggered at the end of the script. If set to TRUE (the default) the input Rds files will be deleted at the end of the report, and (if rds files were supplied via rdsInputDir) the directory specified in rdsInputDir will be removed providing that no other files remain within. This is to minimise storage of intermediate files.
+
 --->
 
 ```{r, include=FALSE}
+#This chunk performs basic fundamental setup procedures for the report
+
 library(patchwork)
 library(tidyverse)
 
@@ -42,13 +51,50 @@ knitr::opts_chunk$set(echo = FALSE,
                       results = 'asis'
 )
 
-#Store the top-level parameters, since the params list will be replaced respectively to each child report
-parentParams <- params 
+#Remove the lock on the object 'params', storing top-level parameters seperately since the params list will be replaced respectively to each child report
+#cf https://stackoverflow.com/questions/49475303/rmarkdown-child-documents-do-not-detect-their-params
+parentParams <- params
+unlockBinding("params",env=environment()) 
 
-#Remove the lock on the object 'params'
-unlockBinding("params",env=environment())
+
+#For testing
+#parentParams$funsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
+#parentParams$rmdDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/rmd"
+#parentParams$rdsInputDir <- "~/Downloads"
+
+## Read-in custom helper functions [required for successful generation of the finemap report]
+list.files(parentParams$funsDir,full.names = TRUE,pattern=".R") %>%
+  lapply(.,source) %>%
+  invisible(.)
+
+#Setup a colour palette to be used across ggplots (colours taken from plot SuSiE)
+ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00", 
+              "gold1", "skyblue2", "#FB9A99", "palegreen2", "#CAB2D6", 
+              "#FDBF6F", "gray70", "khaki2", "maroon", "orchid1", "deeppink1", 
+              "blue1", "steelblue4", "darkturquoise", "green1", "yellow4", 
+              "yellow3", "darkorange4", "brown")
+
+
+
+### Prepare to read-in rds files containing list inputs
+
+#If all files are stored in a single directory, the filepath can be stored in params$rdsInputDir and then import from the basenames to create the full filepaths. Otherwise, if params$rdsInputDir is null, expect full filepaths for each param
+if(!is.null(parentParams$rdsInputDir)){
+  parentParams$P01 <- file.path(parentParams$rdsInputDir,parentParams$P01)
+  parentParams$P02 <- file.path(parentParams$rdsInputDir,parentParams$P02)
+  parentParams$P03 <- file.path(parentParams$rdsInputDir,parentParams$P03)
+  parentParams$summaryFigures <- file.path(parentParams$rdsInputDir,parentParams$summaryFigures)
+}
+
+#Set null any inputs which cannot be identified
+if(!file.exists(parentParams$P01)) parentParams$P01 <- NULL
+if(!file.exists(parentParams$P02)) parentParams$P02 <- NULL
+if(!file.exists(parentParams$P03)) parentParams$P03 <- NULL
+if(!file.exists(parentParams$summaryFigures)) parentParams$summaryFigures <- NULL
+
 
 ```
+
 
 `r if(is.null(parentParams$P01)) "\\begin{comment}"`
 
@@ -67,12 +113,14 @@ Placeholder
 #Declare the template for the dynamic tabs; ie. the knitted report
 template <- c(
     "\n\n## {{nm}}",
-    "`r params <- parentParams$P02${{nm}}`",
+    "`r params <- finemapReport${{nm}}`",
     "```{r child=file.path(parentParams$rmdDir,'finemap_report.Rmd')}",
     "```")
 
+#Read-in the finemapping report params
+finemapReport <- readRDS(parentParams$P02)
 
-report02 <- lapply(names(parentParams$P02),
+report02 <- lapply(names(finemapReport),
   function(nm) knitr::knit_expand(text = template)
 )
 
@@ -93,23 +141,35 @@ Placeholder
 
 ___
 
-`r if(is.null(parentParams$summaryFigures)) "\\begin{comment}"`
+```{r, include=FALSE}
+#Provisionally read-in the summary figures and only include them in the report if two traits are being compared [otherwise the plots are simple duplicates of the SNP-wise summaries produced within the  finemapping report]
 
-# SNP associations across traits {.tabset}
+if(!is.null(parentParams$summaryFigures)){
+  #Save figs list and (for known columns) assign report-friendly names
+  figs <- readRDS(parentParams$summaryFigures)
+  
+  #Logical check whether to plot figs  
+  plotFigs <- "traitxy_figure" %in% names(figs[[1]])
 
-The following figures are comparable to the SNPwise plots displayed in the finemapping report summary, comparing additionally across a pair of traits.
+} else {
+  plotFigs <- FALSE #Otherwise default to false
+}
+```
 
-```{r, eval=!is.null(parentParams$summaryFigures)}
-#Eval is set because this chunk tries to execute even with the prior comment
 
-#Save figs list and (for known columns) assign report-friendly names
-figs <- readRDS(parentParams$summaryFigures)
+`r if(!plotFigs) "\\begin{comment}"`
 
+# SNP-wise trait comparisons {.tabset}
+
+The following plots display comparisons between traits across various measures at a per-SNP level. `r ifelse(exists("finemapReport"),"SNPs are coloured according to any credible set assignments made during per-trait finemapping. PIP values were determined during finemapping, whilst the other","These")` measures were obtained from the GWAS summary statistics.
+
+```{r, eval=plotFigs}
 
 recodes=c("p"="P-values",
-          "z"="Z-score",
-          "abs_z"="Absolute Z-score",
+          "z"="Z-scores",
+          "abs_z"="Absolute Z-scores",
           "pip"="PIPs",
+          "PIP"="PIPs",
           "beta"="Beta coefficients")
 
 names(figs) <- dplyr::recode(names(figs),!!!recodes)
@@ -137,7 +197,21 @@ cat(res,sep="\n\n")
 ```
 
 
-`r if(is.null(parentParams$summaryFigures)) "\\end{comment}"`
+`r if(!plotFigs) "\\end{comment}"`
 
-___
+```{r, eval=parentParams$rmIntermediates, include=FALSE}
+
+#Extract and drop non-null input Rds files
+optsToDrop<- parentParams[!sapply(parentParams,is.null)] %>%
+  .[sapply(.,function(x)grepl(".Rds$",x))] %>%
+  unlist()
+
+system(paste("rm ",paste(optsToDrop,collapse=" ")))
+
+#If input files were specified to all belong in one directory and no files remain in this directory after initial parameter Rds file removal, use rmdir to drop the empty file path
+#rmdir will automatically error if the directory is detected to contain files, so this should be safe
+if(!is.null(parentParams$rdsInputDir)){
+  if(length(list.files(parentParams$rdsInputDir))==0) system(paste("rmdir ",parentParams$rdsInputDir))
+}
+```
 

@@ -27,7 +27,7 @@ option_list = list(
   make_option("--helperFunsDir", action="store", default=NULL, type='character',
               help="Filepath to directory containing helper functions used within the script"),
   make_option("--rdsOut",action="store", default=NULL, type='character',
-              help="Specify a directory in which to return figures in an Rds file [optional]"),
+              help="Specify a directory in which to return figures within an Rds file [optional]"),
   make_option("--outdir", action="store", default=NULL, type='character',
               help="Filepath to directory to which files will be written")
 )
@@ -49,15 +49,13 @@ test <- FALSE # test <- TRUE
 if(test==TRUE){
   #####
   setwd("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing")
-  opt <- list()
   
-  opt$harmonisedSumstats <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/datasets/harmonised_sumstats.csv"
+  opt$helperFunsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
+  opt$harmonisedSumstats <- "/Users/tom/Downloads/harmonised_sumstats.csv"
   opt$traits <- "PD,SZ"
   
   opt$GWASconfig <- "./GWAS_samples_testing.txt"
   opt$genomeAlignment <- 37
-  
-  opt$helperFunsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
   
   opt$GWASsumplots <- c("PIP,p,beta")
   opt$GWASsumplots_onefile <- FALSE
@@ -72,8 +70,10 @@ if(test==TRUE){
 #Declare trait IDs and, if provided, name for each trait
 
 #Extract names of traits compared, first dropping file path, and then any prefixes indicated by a preceding underscore
-traits <- strsplit(opt$traits,",")[[1]][1:2]
-cat("Plotting summary plots for trait IDs: ", paste0(1:length(traits)," = ",traits,collapse = ", "),".\n",sep='')
+traits <- strsplit(opt$traits,",")[[1]]
+if(length(traits)>2) traits <- traits[1:2]
+
+cat("Generating summary plots for trait IDs: ", paste0(1:length(traits)," = ",traits,collapse = ", "),".\n",sep='')
 
 if(!is.null(opt$GWASconfig)){
   #Read in the configuration options
@@ -90,13 +90,16 @@ list.files(opt$helperFunsDir,full.names = TRUE,pattern=".R") %>%
 
 
 #Read in dataset
-data<- read.table(opt$harmonisedSumstats,sep=",",header=TRUE)
+data<- tibble(fread(opt$harmonisedSumstats,header=TRUE))
 
 #Filter traits to match only those indicated in the --traits option
 data<- data[data$trait %in% traits,]
 if(nrow(data)==0){
   stop("No records remain in the data supplied to --harmonisedSumstats after filtering to records where the 'trait' column corresponds to the first two traits indicated in the --traits option")
 }
+#Define logical indicator about whether two traits are being compared, since this affects faceting behaviour and generation of the trait comparison plot
+isTwoTraits<- ifelse(length(unique(data$trait))==2,TRUE,FALSE)
+
 
 ######
 ### Prepare for, and then generate Summary plots comparing the region-results for the two GWAS
@@ -109,7 +112,7 @@ opt$GWASsumplots <- strsplit(opt$GWASsumplots,",")[[1]]
 checksumplots<- tolower(opt$GWASsumplots) %in% c('pip','p','z','beta')
 if(any(!checksumplots)){
   customStrings<- sapply(opt$GWASsumplots[!checksumplots],function(x,data){
-    !is.null(data[x]) && is.numeric(data[[x]])  #Return true if the custom string corresponds to a numeric column - otherwise declare FALSE, to be removed
+    x %in% names(data) && is.numeric(data[[x]])  #Return true if the custom string corresponds to a numeric column - otherwise declare FALSE, to be removed
   },data)
   
   if(any(!customStrings)){
@@ -121,23 +124,23 @@ if(any(!checksumplots)){
 }
 
 ## Check for presence of required parameters
-if("pip" %in% tolower(opt$GWASsumplots) && is.null(data$variable_prob)){
+if("pip" %in% tolower(opt$GWASsumplots) && !"variable_prob" %in% names(data)){
   warning("Finemapping PIPs cannot be plotted because the 'variable_prob' column output by SuSiE is absent from the dataset")
   opt$GWASsumplots <- opt$GWASsumplots[!grepl("pip",tolower(opt$GWASsumplots))]
 }
 
-if("beta" %in% tolower(opt$GWASsumplots) && is.null(data$beta)){
+if("beta" %in% tolower(opt$GWASsumplots) && !"beta" %in% names(data)){
   warning("Summary statistics betas cannot be plotted because the expected 'beta' column is absent from the dataset")
   opt$GWASsumplots <- opt$GWASsumplots[!grepl("beta",tolower(opt$GWASsumplots))]
 }
 
-if("p" %in% tolower(opt$GWASsumplots) && is.null(data$pvalues)){
+if("p" %in% tolower(opt$GWASsumplots) && !"pvalues" %in% names(data)){
   warning("Summary statistics p values cannot be plotted because the expected 'pvalues' column is absent from the dataset")
   opt$GWASsumplots <- opt$GWASsumplots[!grepl("p",tolower(opt$GWASsumplots))]
 }
 
 
-if("z" %in% tolower(opt$GWASsumplots) && any(is.null(data$beta),is.null(data$SE)) || sum(grepl("^(z|Z)$",colnames(data)))!=1){
+if("z" %in% tolower(opt$GWASsumplots) && any(!c("beta","SE") %in% names(data)) || sum(grepl("^(z|Z)$",names(data)))!=1){
   warning("Summary statistics Z-scores cannot be plotted because the required columns were missing from the dataset. Please provide either the column 'Z' (case insensitive) or both of 'beta' and 'SE'.")
   opt$GWASsumplots <- opt$GWASsumplots[!grepl("z",tolower(opt$GWASsumplots))]
 }
@@ -145,14 +148,15 @@ if("z" %in% tolower(opt$GWASsumplots) && any(is.null(data$beta),is.null(data$SE)
 if(length(opt$GWASsumplots)==0){
   stop("No valid options for summary plotting remain. Terminating script")
 }
+cat("Measures to plot: ", paste0(opt$GWASsumplots,collapse = ", "),"\n",sep='')
 
 
 
 #Set colour attribute 
-if(!is.null(data$cs) && opt$GWASsumplots_incfinemapping){
+if("cs" %in% names(data) && opt$GWASsumplots_incfinemapping){
   colourMapping <- "cs" 
   data$cs <- factor(data$cs)
-} else if (is.null(data$cs) && opt$GWASsumplots_incfinemapping){
+} else if (!"cs" %in% names(data) && opt$GWASsumplots_incfinemapping){
   warning("Credible sets cannot be shown in the figure since the 'cs' column is missing from the dataset.")
   colourMapping = NULL #Set colour attribute 
 } else {
@@ -176,49 +180,74 @@ ggsummaryplot <- lapply(opt$GWASsumplots,ggSummaryplot,
                         traits=traits,
                         facetNrow=ifelse(opt$GWASsumplots_onefile,2,1),
                         nameColourLegend="Trait: Credible set",
-                        facetTraits=TRUE,
+                        facetTraits=isTwoTraits,
                         build=paste0("GRCh",opt$genomeAlignment),
-                        compareTraits=TRUE)
+                        compareTraits=isTwoTraits)
 names(ggsummaryplot)<- opt$GWASsumplots
 
 #Write individual plots to rds file
-if(!is.null(opt$rdsOut)){ saveRDS(ggsummaryplot,file.path(opt$rdsOut,"SummaryFigs.Rds")) }
+if(!is.null(opt$rdsOut)){ 
+  if(!dir.exists(opt$rdsOut)) dir.create(opt$rdsOut,recursive = TRUE)
+  saveRDS(ggsummaryplot,file.path(opt$rdsOut,"SummaryFigs.Rds"))
+}
 
 #If more than one file requested, concatenate
 if(opt$GWASsumplots_onefile && length(ggsummaryplot)>1){
   
-  #Drop repeated x-axis text from the bp figures
-  index=1:(length(ggsummaryplot)-1)
-  ggsummaryplot[index] <-lapply(ggsummaryplot[index],function(x){
-    x$bpfigure <-x$bpfigure+
-      theme(axis.title.x = element_blank())
-    return(x)
-  })
-  
-  #Align all the bp figures and traitxy figures column-wise to ensure x-axes panels are aligned correctly, then align the two columns
-  wrapOneFile <- wrap_plots(
+  #If only one trait has been plotted (i.e. no 'xy' figure):
+  if(!"traitxy_figure" %in% names(ggsummaryplot[[1]])){
     
-    wrap_plots(lapply(ggsummaryplot,function(x)x$bpfigure),ncol=1),
-    wrap_plots(lapply(ggsummaryplot,function(x)x$traitxy_figure),ncol=1),
-    ncol = 2)+
-    plot_layout(guides = 'collect')
+    #Use Patchwork to assemble all plots into a a simple patchwork [shared x-axis not currently implemented since this needs to be robust to various plot configurations]
+    wrapOneFile<-  Reduce("+",lapply(ggsummaryplot,function(x)x$bpfigure))+
+      plot_layout(guides = 'collect')
+    
+    height=200 #Declare save dimension
+    
+  } else { #Otherwise:
+    
+    #Drop repeated x-axis text from the bp figures
+    index=1:(length(ggsummaryplot)-1)
+    ggsummaryplot[index] <-lapply(ggsummaryplot[index],function(x){
+      x$bpfigure <-x$bpfigure+
+        theme(axis.title.x = element_blank())
+      return(x)
+    })
+    
+    #Align all the bp figures and traitxy figures column-wise to ensure x-axes panels are aligned correctly, then align the two columns
+    wrapOneFile <- wrap_plots(
+      
+      wrap_plots(lapply(ggsummaryplot,function(x)x$bpfigure),ncol=1),
+      wrap_plots(lapply(ggsummaryplot,function(x)x$traitxy_figure),ncol=1),
+      ncol = 2)+
+      plot_layout(guides = 'collect')
   
+  height=75*length(ggsummaryplot) #Scale save dimension to match the n of plots
+  }  
   #Save the combined plots to file
-  height=75*length(ggsummaryplot)
   ggsummaryfile <- ggsave(file.path(opt$outdir,paste0(paste0(traits,collapse="_"),"_summary_plots.pdf")),
                           wrapOneFile,device="pdf",units="mm",width=200,height=height)
   
   
 } else {
   
-  #Patchwork wrap the plots individually
-  wrapped <- lapply(ggsummaryplot,function(x){
-    wrap<- x$bpfigure / x$traitxy_figure+
-      plot_layout(guides = 'collect',heights = c(1,2))
+  #If only one trait has been plotted (i.e. no 'xy' figure):
+  if(!"traitxy_figure" %in% names(ggsummaryplot[[1]])){
     
-    return(wrap)
-  })
+    #Save the plots as they are
+    wrapped <- lapply(ggsummaryplot,function(x)x$bpfigure)
+    
+  } else { #Otherwise:
+    
+    #Patchwork wrap the plots individually
+    wrapped <- lapply(ggsummaryplot,function(x){
+      wrap<- x$bpfigure / x$traitxy_figure+
+        plot_layout(guides = 'collect',heights = c(1,2))
+      
+      return(wrap)
+    })
+  }
   
+  #Save files
   for(i in 1:length(wrapped)){
     ggsave(file.path(opt$outdir,paste0(paste0(traits,collapse="_"),"_",names(wrapped)[i],"_summaryplot.pdf")),
            wrapped[[i]],device="pdf",units="mm",width=175,height=175)

@@ -46,6 +46,8 @@ option_list = list(
               help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.susie function; default values are '1e-04,1e-04,5e-06' which corresponds with the coloc.susie default settings (passed through to coloc.bf_bf function)."),
   make_option("--out", action="store", default="./COLOC-reporter", type='character',
               help="Path and prefix for directory in which to return all outputs. Defaults to ./COLOC-reporter. When running multiple analyses, unique output directories are essential for tidy file organisation."),
+  make_option("--rdsOut",action="store", default=NULL, type='character',
+              help="Specify a directory in which to return Rds files containing r markdown report parameters for use in generating a global analysis report [optional]"),
   make_option("--genomeAlignment", action="store", default=37, type='numeric',
               help="Indicate the reference genome to which summary statistics and LD reference are aligned. Defaults to 37."),
   make_option("--gene_tracks", action="store", default=NULL, type='numeric',
@@ -802,8 +804,8 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
         finemap_summary <- data.frame(CS_span = NA,
                                       LD_Zscore_consistency=finalConsistencyCheck,
                                       CScoverage=opt$finemap_CScoverage,
-                                      beta_maxSNP = basedata$snp[which(basedata$beta==max(basedata$beta))],
-                                      p_minSNP = basedata$snp[which(basedata$pvalues==min(basedata$pvalues))],
+                                      beta_maxSNP = paste(basedata$snp[which(basedata$beta==max(basedata$beta))],collapse=", "),
+                                      p_minSNP = paste(basedata$snp[which(basedata$pvalues==min(basedata$pvalues))],collapse=", "),
                                       pip_maxSNP = NA,
                                       sum_susie$cs,
                                       NSNP=NA,
@@ -948,7 +950,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
     cat("Please check the resources returned in the finemapQC directory to evaluate the  alignment of summary statistic test statistics against those expected given the LD matrix.\nSee also https://chr1swallace.github.io/coloc/articles/a02_data.html for details.\n")
     sink()
     
-  } else if(!all(sapply(susie_rep[1:ifelse(length(susie_rep)>2,2,length(susie_rep))],function(x)x$csFound))){ #Return this message on the basis of only the first two traits
+  } else if(!all(sapply(susie_rep[1:ifelse(length(susie_rep)>2,2,length(susie_rep))],function(x)x$csFound)) && opt$runMode!="finemapOnly"){ #Return this message on the basis of only the first two traits
     sink(file = logfile, append = T)
     cat(coveragePcent," credible sets were not identified for at least one of ",paste0(traits[1:ifelse(length(traits)>2,2,length(traits))],collapse=" & "),". Therefore, coloc.susie was not used.\nAdjusting the susie_rss coverage parameter using the --finemap_CScoverage option may allow lower coverage credible sets to be identified but these should be treated with caution (See: https://chr1swallace.github.io/coloc/articles/a06_SuSiE.html).\n",sep='')
     sink()
@@ -1376,39 +1378,30 @@ for(i in 1:length(toPlot)){
 } #Bracket indicating the end of the else condition performed when opt$runMode!="finemapOnly"
 
 ######
-### Generate the global HTML report
+### Generate the global HTML report parameters
 ######
 
-### Get report information for each step
+if(!is.null(opt$rdsOut)){ 
+  if(!dir.exists(opt$rdsOut)) dir.create(opt$rdsOut,recursive = TRUE)
 
-#P01 ...
-
-#P03 ...
-
-#Finemapping reports are handled per-trait. Therefore combine them into a single list
-finemapReports<- grep("RMD_finemap_",ls(envir=.GlobalEnv),value=TRUE)
-if(length(finemapReports)>0){
-  P02<- lapply(finemapReports,get)
-  names(P02) <- lapply(P02,function(x)unlist(x$trait))
+  ### Get report information for each step
+  
+  #P01 ...
+  
+  #Finemapping reports are handled per-trait. Therefore combine them into a single list
+  finemapReports<- grep("RMD_finemap_",ls(envir=.GlobalEnv),value=TRUE)
+  if(length(finemapReports)>0){
+    P02<- lapply(finemapReports,get)
+    names(P02) <- lapply(P02,function(x) unlist(x$trait))
+    
+    saveRDS(P02,file.path(opt$rdsOut,"P02.Rds"))
+  }
+  
+  #P03 ...
 }
-
-#Create a concatenated list of all the params to pass to the parent report
-prm<-list(P01=switch(exists("P01"),P01,NULL),
-     P02=switch(exists("P02"),P02,NULL),
-     P03=switch(exists("P03"),P03,NULL),
-     rmdDir=file.path(normalizePath(opt$scriptsDir),"rmd"))
-
-#Declare the file name
-finalRep<- file.path(normalizePath(opt$out),"analysis_report.html")
-
-#Render the parent report
-renderReport(template=file.path(normalizePath(opt$scriptsDir),"rmd","parent_report.Rmd"),
-             params="prm", #prm is passed to get() function
-             outfile=finalRep
-)
 
 sink(file = logfile, append = T)
 cat("------------------------------\n")
-cat("An html report overviewing the SuSiE finemapping analysis and quality control can be found in:", basename(finalRep))
+cat("An html report overviewing the SuSiE finemapping analysis and quality control can be found in the main results directory.\n")
 cat("Please review this log for other steps and the plots directory for figures comparing across traits used for colocalisation analysis.\n")
 sink()

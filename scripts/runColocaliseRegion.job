@@ -37,7 +37,7 @@ cd  $tmp_dir
 #Print to log that a new analysis loop has begun
 printf "########################\nAnalysing traits: ${traits} at locus: ${locus}\n"
 
-echo "Running main colocalisation analysis script"
+printf "Running main colocalisation analysis script\n"
 	
 #This script harmonises summary statistics, performs finemapping, and then colocalisation analysis
 Rscript ${scriptpath}/colocaliseRegion.R \
@@ -52,11 +52,12 @@ Rscript ${scriptpath}/colocaliseRegion.R \
 		--finemapQC_handleBetaFlips drop \
 		--finemap_CScoverage 0.95 \
 		--out $outpath \
+		--rdsOut "${outpath}_coloc/data/globalReportInputs" \
 		--traits $traits \
 		--GWASconfig ${scriptpath}/GWAS_samples.txt \
 		--scriptsDir ${scriptpath}
 		
-echo "Running GWAS summary figure script"
+printf "\nGenerating GWAS summary figures\n"
 		
 #This script takes harmonised summary statistics as input and plots comparisons across the measures indicated in --GWASsumplots across pairs of GWAS summary statistics
 Rscript ${scriptpath}/gwasSummaryPlotter.R \
@@ -67,9 +68,20 @@ Rscript ${scriptpath}/gwasSummaryPlotter.R \
 		--GWASsumplots_onefile FALSE \
 		--GWASsumplots_incfinemapping TRUE \
 		--helperFunsDir "${scriptpath}/helper_functions" \
+		--rdsOut "${outpath}_coloc/data/globalReportInputs" \
 		--outdir "${outpath}_coloc/plots" 
-		
 	
+printf "\nGenerating global report\n"
+
+#Passing directly to R and rmarkdown, compile the global report
+
+R -s -e 'rmarkdown::render("'${scriptpath}/rmd/parent_report.Rmd'",
+output_file = "'${outpath}_coloc/analysis_report.html'",
+params = list(
+rmdDir="'${scriptpath}/rmd'",
+rdsInputDir="'${outpath}_coloc/data/globalReportInputs'",
+funsDir="'${scriptpath}/helper_functions'"),
+quiet=TRUE)'
 
 
 

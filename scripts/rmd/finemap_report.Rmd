@@ -200,7 +200,7 @@ SNPs in the figures are coloured by credible set. In the legend, `C` indicates t
 
 <details><summary>Additional details</summary>
 
-- PIP: Posterior inclusion probability.
+- PIP: Posterior inclusion probability
 
 - P-values: A local Manhattan plot for SNP significance
 
