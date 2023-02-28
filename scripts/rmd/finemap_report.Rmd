@@ -152,12 +152,46 @@ if(class(summary)!="character"){
   
   genesCol<- ncol(summary)
   
-  #Establish the width relative to the number of breaks made by str_wrap
-  maxLength<- summary$Genes_near_span[nchar(summary$Genes_near_span)==max(nchar(summary$Genes_near_span))]
+  ##[Not presently implemented] piping wrapper for dplyr to cleanly mutate the up/downstream nearby genes columns to allow italicised gene names.
+  #when more than 1 top snp is represented for a given CS, (i.e. coma and space separated), linebreak them
+  #otherwise, also simplify the values to retain only the nearby genes details themselves
+  
+  # formatNearbyGenes <- function(x,test){ x %>% 
+  #   gsub("\\(","(\\\\textit{",.) %>% 
+  #   gsub("\\;","};",.) %>% 
+  #   if_else(test,gsub(", ",",\n",.),gsub(".*\\((.*)\\)","\\1",.))
+  # }
+  # 
+  # summary <- summary %>%
+  #   mutate(pip_maxSNP_nearestDownstreamGene=formatNearbyGenes(pip_maxSNP_nearestDownstreamGene,grepl(", ",pip_maxSNP)),
+  #          pip_maxSNP_nearestUpstreamGene=formatNearbyGenes(pip_maxSNP_nearestUpstreamGene,grepl(", ",pip_maxSNP))
+  #   )
+
+  summary <- summary %>%
+    mutate(pip_maxSNP_nearestDownstreamGene=if_else(grepl(", ",pip_maxSNP),
+                                                    pip_maxSNP_nearestDownstreamGene, #Return as-is if TRUE
+                                                    gsub(".*\\((.*)\\)","\\1",pip_maxSNP_nearestDownstreamGene)),
+           pip_maxSNP_nearestUpstreamGene=if_else(grepl(", ",pip_maxSNP),
+                                                    pip_maxSNP_nearestUpstreamGene,
+                                                    gsub(".*\\((.*)\\)","\\1",pip_maxSNP_nearestUpstreamGene)),
+    )
+  
+  #Add a grouped column header for pip_maxSNP, leaving header values for other cols empty
+  PIPsnpcols<- grep("pip_max",colnames(summary))
+  colnames(summary)[PIPsnpcols] <- c("SNP ID","PIP","Nearest downstream gene","Nearest upstream gene")
+  colgroups <- c(" " = min(PIPsnpcols)-1, "Max PIP SNP" = length(PIPsnpcols)," "= ncol(summary)-max(PIPsnpcols))
+  
+  
+  #Establish the width of the nearby genes column relative to the number of breaks made by str_wrap
+  longGenescolumn<-summary[[genesCol[2]]]
+  maxLength<- longGenescolumn[nchar(longGenescolumn)==max(nchar(longGenescolumn))]
   nWraps<- str_count(str_wrap(maxLength,width=80),"\n")
   
-  kable(summary,align = "c") %>% kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
-    column_spec(column=genesCol, width_min = paste0(10*nWraps,"em")) %>% 
+  kable(summary,align = "c",row.names=FALSE) %>%
+    kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+    column_spec(column=PIPsnpcols[3:4], width_min = "15em") %>%
+    column_spec(column=genesCol, width_min = paste0(10*nWraps,"em"),italic=TRUE) %>%
+    add_header_above(colgroups) %>%
     scroll_box(width = "100%") #column spec must be given before scrollbox
 } else {
   cat(summary)
@@ -218,9 +252,9 @@ plotvars=c("PIP","z","p","beta")
 dataset<- params$sets
 
 #Derive the summary plots using the custom function
-summaryPlots<-lapply(plotvars,ggSummaryplot,xlim=range(dataset$pos),dset=dataset,
+summaryPlots<-lapply(plotvars,ggSummaryplot,bp_range=range(dataset$pos),dset=dataset,
                      colourMapping=switch(!is.null(dataset$cs), "cs", NULL),
-                     nameColourLegend="Credible sets",build=paste0("GRCh",params$alignment),chr=dataset$chr[1])
+                     nameColourLegend="Credible sets",chr=dataset$chr[1])
 
 #Save figs list
 figs <- lapply(summaryPlots,function(x)x$bpfigure)

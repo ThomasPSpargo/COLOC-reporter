@@ -35,15 +35,17 @@ option_list = list(
   make_option("--finemap_refine", action="store", default=FALSE, type='logical',
               help="Logical, defaulting to FALSE. Specify TRUE to add a refinement step to SuSiE finemapping call to avoid identification of local maxima."),
   make_option("--finemap_initialL", action="store", default=10, type='numeric',
-              help="Numeric, defaulting to 10, which is the susie default, to indicate the maximum number of non-zero effects to allow in the initial susie regression model."),
+              help="Numeric, defaulting to 10, the susie default, to indicate the maximum number of non-zero effects to allow in the initial susie regression model."),
   make_option("--finemap_increaseL", action="store", default=TRUE, type='logical',
               help="Logical, defaulting to TRUE which indicates that higher values of L should be attempted in susie finemapping (with L+10 for each loop) when the number of credible sets found match the current L value. Setting this to FALSE will run susie once only, using the L setting specified in the --finemap_initialL option."),
+  make_option("--restrict_source_for_nearest_finemap_gene", action="store", default=NULL, type='character',
+              help="Comma delimited character string indicating sources to consider when identifying the nearest gene to the top SNP identified within any finemapping credible sets. Included as an option to prioritise tagging of nearby genes which are e.g. HGNC symbols. If NULL, the default, all sources will be evaluated."),
   make_option("--priors_susie", action="store", default=NULL, type='numeric',
-              help="Set a prior probability that a snp is causal for susie finemapping (equivalent to coloc p1 or p2). Set to NULL by default which corresponds to the default for the coloc::runsusie wrapper around susie_rss; this is not usual default for susie_rss - see coloc::runsusie documentation for details."),
+              help="Set a prior probability that a snp is causal for susie finemapping (equivalent to coloc p1 or p2). Set to NULL by default, the default for the coloc::runsusie wrapper around susie_rss; this is not usual default for susie_rss - see coloc::runsusie documentation for details."),
   make_option("--priors_coloc.abf", action="store", default="1e-4,1e-4,1e-5", type='character',
-              help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.abf function; default values are '1e-4,1e-4,1e-5' which corresponds with the coloc.abf default settings."),
+              help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.abf function; default values are '1e-4,1e-4,1e-5' the coloc.abf default settings."),
   make_option("--priors_coloc.susie", action="store", default="1e-04,1e-04,5e-06", type='character',
-              help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.susie function; default values are '1e-04,1e-04,5e-06' which corresponds with the coloc.susie default settings (passed through to coloc.bf_bf function)."),
+              help="Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in coloc.susie function; default values are '1e-04,1e-04,5e-06' the coloc.susie default settings (passed through to coloc.bf_bf function)."),
   make_option("--out", action="store", default="./COLOC-reporter", type='character',
               help="Path and prefix for directory in which to return all outputs. Defaults to ./COLOC-reporter. When running multiple analyses, unique output directories are essential for tidy file organisation."),
   make_option("--rdsOut",action="store", default=NULL, type='character',
@@ -76,7 +78,7 @@ suppressPackageStartupMessages({
 })
 
 test <- FALSE # test <- TRUE
-if(test==TRUE){
+if(test){
   #####
   setwd("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing")
   
@@ -91,7 +93,7 @@ if(test==TRUE){
   opt$force_matrix <- FALSE
   
   opt$gene_tracks <- 40
-  opt$restrict_nearby_gene_plotting_source <- "HGNC Symbol"
+  opt$restrict_source_for_nearest_finemap_gene <- opt$restrict_nearby_gene_plotting_source <- "HGNC Symbol"
   opt$genomeAlignment <- 37
   
   opt$scriptsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts"
@@ -106,6 +108,13 @@ coveragePcent<- paste0(opt$finemap_CScoverage*100,"%")
 #Read in the configuration options
 GWASconfig<- fread(opt$GWASconfig)
 Config_msg <- paste0("Summary statistic configuration options set according to the specification of --GWASconfig for trait IDs: ", paste0(1:length(traits)," = ",traits,collapse = ", "),".\n",sep='')
+
+#Run some simple config checks
+checkdups<- duplicated(GWASconfig$ID)
+if(any(checkdups)){ stop("Terminating script because the file supplied to --GWASconfig contained duplicates in the ID column. Please assign unique IDs for all traits. Problem found with: ", paste0(GWASconfig$ID[checkdups],collapse=", "),"\n"); q("no") }
+checkunknownID<- !traits %in% GWASconfig$ID
+if(any(checkunknownID)){ stop("Terminating script because the IDs indicated in --traits were not found in the ID column of the file supplied to --GWASconfig. Problem found with: ",paste0(traits[checkunknownID], collapse=", "),"\n"); q("no") }
+rm(checkunknownID,checkdups)
 
 #Assign names to traits
 names(traits) <- GWASconfig[traits,on="ID"]$traitLabel
@@ -188,6 +197,8 @@ colcheck<- mapply(function(x,trait){
       GWASconfig[trait,on="ID"]$pos_col,
       GWASconfig[trait,on="ID"]$se_col,
       GWASconfig[trait,on="ID"]$snp_col,
+      GWASconfig[trait,on="ID"]$A1_col,
+      GWASconfig[trait,on="ID"]$A2_col,
       GWASconfig[trait,on="ID"]$freq_col)
     %in% colnames(x)
   ))
@@ -219,6 +230,8 @@ sums<- mapply(function(x,trait){
   names(x)[names(x)==GWASconfig[trait,on="ID"]$pos_col] <- "pos"
   names(x)[names(x)==GWASconfig[trait,on="ID"]$se_col] <- "SE"
   names(x)[names(x)==GWASconfig[trait,on="ID"]$snp_col] <- "snp"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$A1_col] <- "A1"
+  names(x)[names(x)==GWASconfig[trait,on="ID"]$A2_col] <- "A2"
   names(x)[names(x)==GWASconfig[trait,on="ID"]$freq_col] <- "MAF"
     
   return(x)
@@ -358,7 +371,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   
   #Check for the expected LD matrix output; if files are absent or if --force_matrix is set, generate using PLINK
   expect <- c(".snplist",".ld")
-  expect <- file.path(opt$out,'LDmatrix',paste0('ld_matrix',expect))
+  expect <- file.path(datadir,'LDmatrix',paste0('ld_matrix',expect))
   
   if(any(!file.exists(expect)) | opt$force_matrix){
     
@@ -449,9 +462,11 @@ sums.region<- mapply(function(x,trait){
 ### Extract genes around tested region
 ######
 
-#Import gene information for region
+#Import gene information for the chromosome.
+#Cache set to false because conflicts were encountered frequently.
 ensembl = useEnsembl(biomart="ensembl", dataset="hsapiens_gene_ensembl", GRCh=opt$genomeAlignment)
-Genes<-getBM(attributes=c('external_gene_name','chromosome_name','start_position','end_position','external_gene_source','strand'), mart = ensembl)
+Genes<-getBM(attributes=c('external_gene_name','chromosome_name','start_position','end_position','external_gene_source','strand'),
+             filters ='chromosome_name', values =reg_range[["chr"]], mart = ensembl,useCache=FALSE)
 
 # Use 10kb window to define gene window
 gene_window<-10000
@@ -460,6 +475,15 @@ Genes$end_window<-Genes$end_position+gene_window
 
 # Do main Susie steps
 if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
+  
+  ## Filter genes in chromosome for matching any credible sets to nearest up/downstream genes
+  genes_checkUpOrDownstream<- Genes
+  if(!is.null(opt$restrict_source_for_nearest_finemap_gene)){ #Filter down the gene sources to match the option set (if any)
+    src <- strsplit(opt$restrict_source_for_nearest_finemap_gene,split=",")[[1]] #String split on comma to identify sources
+    
+    if(sum(genes_checkUpOrDownstream$external_gene_source %in% src)==0){ warning(paste("Problem with --restrict_source_for_nearest_finemap_gene option. could not filter to the indicated source(s) since no genes remained in chromosome after restricting to:", paste0(src,collapse=", ")))
+    } else { genes_checkUpOrDownstream<- genes_checkUpOrDownstream[genes_checkUpOrDownstream$external_gene_source %in% src,] }
+  }
   
   sink(file = logfile, append = T)
   cat("\n######\n### SuSiE finemapping quality control\n######\n")
@@ -484,14 +508,14 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       
       # #Estimate s with all available methods - indicates compatibility between sumstats and reference
       checkMthd<- c("null-mle", "null-partialmle", "null-pseudomle")
-      checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
+      checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=median(dset$N), r_tol = 1e-08)
       
       #Add extra info for writing to file
       checkTofile<- data.frame(t(c("trait"= trait, "n_flips"=0,round(checkLD,5))))
       
       ### Check for allele flip issues
       #Compare observed and expected Z-scores
-      z_compare<- kriging_rss(z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08,s = checkLD[[1]])
+      z_compare<- kriging_rss(z=z_sc, R=dset$LD, n=median(dset$N), r_tol = 1e-08,s = checkLD[[1]])
       zPlot<- list("0 flips"=z_compare$plot)
       
       #Determine snps with betas that may be flipped; this check corresponds with the one implemented by internally by kriging_rss
@@ -513,7 +537,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
           z_sc[possFlipped]<- -z_sc[possFlipped] #Flip the flagged indices
           
           #Re-compare observed and expected Z-scores
-          z_compare_flip <- kriging_rss(z=z_sc,R=dset$LD,n=max(dset$N))
+          z_compare_flip <- kriging_rss(z=z_sc,R=dset$LD,n=median(dset$N))
           
           #Determine SNPs with betas that are currently flagged for potential flips and append to the flip index list
           possFlipped<- with(z_compare_flip$conditional_dist,
@@ -548,7 +572,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       dev.off()
       
       if(max(nPossFlipped)>0){ # If any flips repeat s-estimation after flips
-        checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
+        checkLD<- sapply(checkMthd,estimate_s_rss,z=z_sc, R=dset$LD, n=median(dset$N), r_tol = 1e-08)
         
         #Add extra info for writing to file
         checkTofile<- rbind(checkTofile,
@@ -609,7 +633,14 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       #According to doFlipStep and doFlipDROPStep logicals flip or drop problematic beta coefficients.
       #Flipping is handled on a trait-by-trait basis while dropping is global to keep datasets harmonised
       if(doFlipStep){ dset$beta[QC$toFlip] <- -dset$beta[QC$toFlip]
-      } else if(doFlipDROPStep){ dset<- dropSNPs(dset,flipDrop) }
+      } else if(doFlipDROPStep){ dset <- dropSNPs(dset,flipDrop) }
+      
+      #Write out the dataset post-qc, overwriting the original
+      #Save the formatted dataset as a resource
+      datasetpath<- file.path(datadir,"datasets")
+      if(!dir.exists(datasetpath)){dir.create(datasetpath)}
+      saveRDS(dset,file=file.path(datasetpath,paste0("coloc_format_dataset_",trait,".Rds")))
+      
       return(dset)
     }
     ,sums.region,susieQC,traits,MoreArgs = list(flipDrop=globalFlips),SIMPLIFY = FALSE)
@@ -648,7 +679,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
     #Set a list of arguments to pass to runsusie (and internal susieR functions) with do.call
     #Is programmed this way to avoid repetition in any potential while loop for increasing the L argument
     runsusieArgs <- list(d=dset,
-                         n=max(dset$N),
+                         n=median(dset$N),
                          estimate_residual_variance = FALSE,
                          coverage=opt$finemap_CScoverage,
                          p=opt$priors_susie,
@@ -663,8 +694,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       finemap<- do.call(runsusie,c(runsusieArgs,list(L=L)))
       
       #If the fit indicates a number of CS close to the maximum number of L, recursively try a larger number
-      opt$finemap_increaseL <- TRUE
-      if(opt$finemap_increaseL){
+      if(opt$finemap_increaseL && !is.null(finemap$sets$cs_index)){
         while(max(finemap$sets$cs_index)>=L-2){
           L=L+10 #Iteratively increase number
           finemap<- do.call(runsusie,c(runsusieArgs,list(L=L)))
@@ -672,8 +702,8 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
           if(L==100) break #Set a very high limit on the loop to avoid potential infinite loop
         }
       }
-      #Alternative syntax to run this without the coloc wrapper
-      #finemap<- susie_rss(dset$beta/dset$SE,R=dset$LD,n=max(dset$N),refine=TRUE)
+      #Alternative syntax to run susie without the coloc wrapper
+      #finemap<- susie_rss(dset$beta/dset$SE,R=dset$LD,n=median(dset$N),refine=TRUE)
       
       ## Some basic diagnostics
       #susie_plot(finemap,y="PIP",add_legend=TRUE) 
@@ -701,10 +731,6 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       })
   },sums.region,traits,SIMPLIFY = FALSE)
   
-  
-  
-  
-  
   ######
   ### Summarise susie results across datasets
   ######
@@ -721,7 +747,7 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       sets<- sum_susie$vars #[sum_susie$vars$cs!=-1,] #Extract all snps
     
       ##Perform a final consistency check for the final dataset
-      finalConsistencyCheck<- estimate_s_rss(method="null-mle",z=dset$beta/dset$SE, R=dset$LD, n=max(dset$N), r_tol = 1e-08)
+      finalConsistencyCheck<- estimate_s_rss(method="null-mle",z=dset$beta/dset$SE, R=dset$LD, n=median(dset$N), r_tol = 1e-08)
       
       ## Format the dataset subsetting to only the list elements which are snpwise values
       basedata<- as.data.frame(dset[sapply(dset,length)==length(dset$snp)])
@@ -764,9 +790,9 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       }
       
       pips <- ggSummaryplot(yaxis="pip",
-                            xlim=range(sets$pos),
+                            bp_range=range(sets$pos),
                             dset=sets,colourMapping=switch(csFound,sym("cs"),NULL),
-                            nameColourLegend="Credible set",build=paste0("GRCh",opt$genomeAlignment),chr=sets$chr[1])$bpfigure +
+                            nameColourLegend="Credible set",chr=sets$chr[1])$bpfigure +
         labs(title=ifelse(is.null(names(trait)),trait,names(trait))) #Use trait name as plot title if possible
       
       ggsave(file.path(figdir,paste0("susie_PIP_",trait,".pdf")),pips,device="pdf",units="mm",width=150,height=150)
@@ -774,12 +800,10 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
       if(csFound){
 
         ## Visualise CS-assigned SNPs against the Obs/Exp SNP matrix.
-        
-        #Generate the obs vs exp Z-scores
         z_compare_cs <- kriging_rss(
           z=dset$beta/dset$SE,
           R=dset$LD,
-          n=max(dset$N),
+          n=median(dset$N),
           s=finalConsistencyCheck
         )
         
@@ -801,42 +825,52 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
         ggsave(file.path(finemapQCdir,paste0("Z_score_alignment",trait,"_withCS.pdf")),z_compare_csplot,device="pdf",units="mm",width=150,height=150)
         
         ##### Create summary file
-        finemap_summary <- data.frame(CS_span = NA,
+        finemap_summary <- data.frame(credible_set_bp_range = NA,
                                       LD_Zscore_consistency=finalConsistencyCheck,
                                       CScoverage=opt$finemap_CScoverage,
+                                      NSNP=NA,
                                       beta_maxSNP = paste(basedata$snp[which(basedata$beta==max(basedata$beta))],collapse=", "),
                                       p_minSNP = paste(basedata$snp[which(basedata$pvalues==min(basedata$pvalues))],collapse=", "),
                                       pip_maxSNP = NA,
+                                      pip_max=NA,
+                                      pip_maxSNP_nearestDownstreamGene=NA,
+                                      pip_maxSNP_nearestUpstreamGene=NA,
                                       sum_susie$cs,
-                                      NSNP=NA,
-                                      TopPIP=NA,
-                                      Genes_near_span=NA)
+                                      genes_plusminus10kb_window_containing_full_cs=NA,
+                                      genes_plusminus10Kb_window_overlapping_cs=NA)
         
         for(j in 1:nrow(sum_susie$cs)){
-          snp_index<-as.numeric(unlist(strsplit(finemap_summary$variable[j], ',')))
+          snp_index<-as.numeric(strsplit(finemap_summary$variable[[j]], ',')[[1]])
           
           finemap_summary$NSNP[j] <- length(snp_index)
-          finemap_summary$TopPIP[j]<-max(susie.fit$pip[snp_index])
-          finemap_summary$pip_maxSNP[j]<- paste(names(susie.fit$pip)[susie.fit$pip==finemap_summary$TopPIP[j] & seq_along(susie.fit$pip) %in% snp_index], collapse=', ')
+          finemap_summary$pip_max[j] <- max(susie.fit$pip[snp_index])
+          
+          #Extract the top PIP snp(s), then identify nearest up/downstream gene to variant (intragenic variants are tagged within their respective gene)
+          topPIPsnps <- names(susie.fit$pip[snp_index])[susie.fit$pip[snp_index]==max(susie.fit$pip[snp_index])]
+          topPIPnearest<- lapply(topPIPsnps,getNearestGene,positions=sets[c("snp","pos")],genesInChr=genes_checkUpOrDownstream)
+          
+          #Record the top PIP snps and their nearest up/downstream genes
+          finemap_summary$pip_maxSNP[j]<- paste(topPIPsnps,collapse=", ")
+          finemap_summary$pip_maxSNP_nearestDownstreamGene[j] <- paste(sapply(topPIPnearest,function(x)x$downstream),collapse=", ")
+          finemap_summary$pip_maxSNP_nearestUpstreamGene[j] <- paste(sapply(topPIPnearest,function(x)x$upstream),collapse=", ")
           
           ss_subset<-basedata[(basedata$snp %in% names(susie.fit$pip)[snp_index]),]
-          min_bp<-min(ss_subset$pos)
-          max_bp<-max(ss_subset$pos)
-          chr<-ss_subset$chr[1]
+          bp_range <- range(ss_subset$pos)
           
-          finemap_summary$CS_span[j]<- paste0("chr",chr,":",min_bp,"-",max_bp) #span of credible set
+          finemap_summary$credible_set_bp_range[j]<- paste0("chr",basedata$chr[1],":",bp_range[1],"-",bp_range[2]) #span of credible set
           
-          Genes_subset<- Genes[Genes$chromosome_name == chr & (
-            (Genes$start_window >= min_bp & Genes$start_window <= max_bp) | #Test if start position is within range
-              (Genes$end_window >= min_bp & Genes$end_window <= max_bp) |   #or if end position is within range
-              (Genes$start_window <= min_bp & Genes$end_window >= max_bp)   #or if start and end positions are both outside range [gene straddles window]
-          ),]
+          #Identify all genes around the credible set region
+          Genes_subset<- getNearbyGenes(bp_range=bp_range, genesInChr = Genes)
 
           if(nrow(Genes_subset) > 0){
             #Write the gene names
-            finemap_summary$Genes_near_span[j]<-paste(Genes_subset$external_gene_name, collapse=', ')
+            finemap_summary$genes_plusminus10Kb_window_overlapping_cs[j]<-paste(Genes_subset$external_gene_name, collapse=', ')
+            
+            #Flag any high confidence genes that contain the full credible set
+            highConf <- getNearbyGenes(bp_range=bp_range, genesInChr = Genes, highConfidence = TRUE)
+            if(nrow(highConf) > 0) finemap_summary$genes_plusminus10kb_window_containing_full_cs[j] <- paste(highConf$external_gene_name, collapse=', ')
 
-            #Save details for genes near to credible set #NO MENTION OF THIS OUTPUT IN THE REPORT
+            #Save details for genes nearby to credible set
             sets_outpath<- file.path(tabdir,paste0("nearby_genes_",trait,"_cs",j,".csv"))
             Genes_subset %>%
               dplyr::select(-c(start_window,end_window)) %>%
@@ -844,6 +878,9 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
           }
         }
         finemap_summary$variable <- NULL
+        
+        finemap_summary <- finemap_summary %>%
+          dplyr::select(cs,!cs) #Reorder so that credible set number comes first
         
         #Write finemapping summary to file and concatenate with previous results if file already exists
         finemapSummary<- file.path(tabdir,"results_summary_finemapping.csv")
@@ -860,15 +897,16 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
         #some plots will allow inclusion of multiple snps per CS and downsampling is handled internally
         topsnps <- separate_rows(topsnps, all_of("topsnp"), sep = ", ")
         
+        #Generate numeric only credible set labels for heatmap legend
+        heatmapSets<- sets[c("snp","pos","cs")] %>%
+          mutate(cs=gsub("L([0-9]+):.*","\\1",cs))
+          
         ## First, plot LD in the region relative to top snps from the credible set(s) identified
         
         #Visualise the LD between Top PIP SNPs and other SNPs in the dataset / assigned to CS in heatmap
         #The plotting function expects an index of the top snps to plot ("topsnp") and the credible set to which they correspond ("cs")
-        ldHeatmap<- susie_cs_ld(sets=sets,R=dset$LD,topsnps=topsnps,heatmapPalette="OrRd",discretePalette=ggpalette,
-                                alignment=37,plotR2=TRUE,trait=trait)
-        
-        ggsave(file.path(figdir,paste0("LD_correlations_withCS_",trait,".pdf")),ldHeatmap$heatmap_allSNPs,device="pdf",units="mm",width=200,height=150)
-        ggsave(file.path(figdir,paste0("LD_correlations_withCS_",trait,"_CSsnpsOnly.pdf")),ldHeatmap$heatmap_CSonly,device="pdf",units="mm",width=200,height=150)
+        ldHeatmap<- susie_cs_ld(sets=heatmapSets,R=dset$LD,topsnps=topsnps,heatmapPalette="OrRd",discretePalette=ggpalette,
+                                plotR2=TRUE,chr=sets$chr[1])
         
         #If 2+ CS, visualise correlations between different credible sets
         if(length(susie.fit$sets$cs)>1){
@@ -924,9 +962,6 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
          params=finemapReports,
          outfile=file.path(normalizePath(reportdir),paste0("02_",gsub("RMD_","",finemapReports),"_report.html")),
          MoreArgs = list(template=file.path(opt$scriptsDir,"rmd","finemap_report.Rmd"))))
-  
-  
-  
   
   if(file.exists(file.path(tabdir,"results_summary_finemapping.csv"))){
     sink(file = logfile, append = T)
@@ -1036,7 +1071,6 @@ sink(file = logfile, append = T)
 cat("\n######\n### Colocalisation results\n######\n\n")
 sink()
 
-
 ## Extract priors for coloc steps [coloc.abf and coloc.susie defaults unless options are otherwise modified]
 colocPriors<- strsplit(c(opt$priors_coloc.abf,
                          opt$priors_coloc.susie),split=",")
@@ -1048,8 +1082,9 @@ colocPriors <- lapply(colocPriors,function(x){
   x<- as.list(x)                  #Convert to list
   return(x)})
 
-#Character vector to flag which coloc analyses have been performed
-coloc_performed <- character(0)
+#If subsetting to named gene sources, generate the vector, and cat message to file if no rows would remain
+if(!is.null(opt$restrict_nearby_gene_plotting_source)){geneSources <-strsplit(opt$restrict_nearby_gene_plotting_source,split=",")[[1]] #String split on comma to identify sources
+  } else { geneSources <- NULL }
 
 #If either SuSiE call failed, a credible set has not been found for both traits, or if analysis is passed direct to coloc, run coloc.abf
 if(any(SusieFail) || !all(sapply(susie_rep[1:ifelse(length(traits)>2,2,length(traits))],function(x)x$csFound)) || opt$runMode %in% c("doBoth","skipSusie")){  
@@ -1057,7 +1092,7 @@ if(any(SusieFail) || !all(sapply(susie_rep[1:ifelse(length(traits)>2,2,length(tr
   #Run coloc.abf via do.call to allow passing of the priors list
   clc.abf<- do.call(coloc.abf,c(colocPriors$coloc.abf,list(dataset1=sums1.region, dataset2=sums2.region)))
   
-  #Save the coloc abf results as a resource
+  #Save the coloc abf results as an Rds resource
   colocpath<- file.path(datadir,"colocalisation")
   if(!dir.exists(colocpath)){dir.create(colocpath)}
   saveRDS(clc.abf,file=file.path(colocpath,paste0("coloc_abf_",paste0(traits,collapse="_"),".Rds")))
@@ -1072,39 +1107,85 @@ if(any(SusieFail) || !all(sapply(susie_rep[1:ifelse(length(traits)>2,2,length(tr
   cat("This summary is also returned in the file: results_summary_coloc_abf.csv\n")
   sink()
   
-  #Save the results summary in a table which can be readily combined with other outputs
-  Sum_abf<- t(enframe(c(traits,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc.abf$priors,clc.abf$summary)))
+  ## Save the results summary in a table which can be readily combined with other outputs
+  Sum_abf<- t(enframe(c(traits,reg_range,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc.abf$priors,clc.abf$summary)))
   Sum_abf[1,1:length(traits)] <- paste0("TraitID_",1:length(traits))
   
   write.table(Sum_abf,file=file.path(tabdir,"results_summary_coloc_abf.csv"),sep = ",",row.names=FALSE,col.names = FALSE,quote = FALSE)
   
-  #Save PP.H4.abf summaries, with additional details to file
-  sets_outpath<- file.path(tabdir,"coloc.abf_snpwise_PP_H4_abf.csv")
   
-  #Store in plotdata option for potential plotting
-  plotdata.abf <- sums1.region %>%
-    as.data.frame() %>%
-    dplyr::select(snp,pos) %>%
-    right_join(clc.abf$results,by="snp")
-  
-  write.table(plotdata.abf,file=sets_outpath,sep = ",",row.names=FALSE)
-  
-  sink(file = logfile, append = T)
-  cat("\nSNPwise posterior probabilities of being a shared variant for",paste(traits,collapse = " & "),"under coloc.abf are tabulated in:\n", basename(sets_outpath),"\n")
-  sink()
-  
-  #Flag which coloc analysis has been performed 
-  coloc_performed <- c(coloc_performed, "coloc.abf")
+  if(clc.abf$summary[["PP.H4.abf"]]>0.2){
+    ## Combine with positional data, and label the 95% credible SNPs, saving per-SNP statistics to file
+    snpwiseSummary <- sums1.region %>%
+      as.data.frame() %>%
+      dplyr::select(snp,chr,pos) %>%
+      right_join(clc.abf$results,by="snp") %>%
+      arrange(desc(SNP.PP.H4)) %>%
+      mutate(cs_coloc=cumsum(SNP.PP.H4),                                         #Establish colocalisation credible sets
+             cs_coloc=case_when(row_number() == 1 ~ "within set",                #Top snp is always within set
+                                lag(cs_coloc) < 0.95 ~ "within set",             #lag checks previous record. If this value is <0.95 then SNP is in set
+                                TRUE ~ "outside set"))
+    
+    write.table(snpwiseSummary,file=file.path(tabdir,"coloc.abf_snpwise_PP_H4_abf.csv"),sep = ",",row.names=FALSE)
+    
+    ### Prep data for the SNP pp plot
+    plt <- snpwiseSummary %>%
+      rename(SNP.PP=SNP.PP.H4) %>%
+      mutate(cs_coloc= factor(cs_coloc,levels=c("within set","outside set")),
+             lab = if_else(row_number()<11 & SNP.PP > 0.1 & cs_coloc=="within set",as.character(snp),""))
+    
+    ## Generate the plot
+    snpPP <- ggSummaryplot(dset=plt,
+                           yaxis="SNP.PP",
+                           bp_range=range(plt$pos),
+                           chr=reg_range[["chr"]],
+                           shapeMapping="cs_coloc",
+                           nameShapeLegend="Colocalisation\n(95% credible SNPs)")$bpfigure +
+      geom_text_repel(aes(label=lab), max.overlaps = 20, na.rm=TRUE, show.legend = FALSE)
+    
+    ## Stack the plot above nearby genes
+    snpPPstackGenes <- plotGenesStack(snpPP,
+                                      genesInChr=Genes,
+                                      bp_range=range(snpPP$data$pos[snpPP$data$cs_coloc=="within set"]),
+                                      geneSources=geneSources,
+                                      gene_tracks=opt$gene_tracks,
+                                      nudge_y=0.3)
+    
+    #Save the snp-wise posterior probability plot, and genes nearby to CS if any were found.
+    prefix <- paste0(c("coloc_abf",traits,"SNPposteriorProbs"),collapse="_")
+    file <- ggsave(file.path(figdir,paste0(prefix,".pdf")),snpPP,device="pdf",units="mm",width=150,height=175)
+    if(!"character" %in% class(snpPPstackGenes)){file <- c(file,ggsave(file.path(figdir,paste0(prefix,"_nearbygenes.pdf")),snpPPstackGenes,device="pdf",units="mm",width=150,height=175))}
+    
+    #Identify all genes nearby to the credible snps range for each row
+    nearbyGenes<- getNearbyGenes(bp_range=range(snpPP$data$pos[snpPP$data$cs_coloc=="within set"]),
+                                 genesInChr=Genes)
+    
+    #If any genes have been matched, then write to a summary table
+    if(nrow(nearbyGenes)>0){
+      nearbyGenes %>%
+        dplyr::select(-c(start_window,end_window)) %>%
+        write.table(.,file=file.path(tabdir,paste0("nearby_genes_coloc_abf.tsv")),sep = "\t",row.names=FALSE)
+    }
+    
+    sink(file = logfile, append = T)
+    cat(sep='',"\nPer-SNP posterior probabilities for being a shared variant (assuming H4=TRUE) are tabulated in: coloc.abf_snpwise_PP_H4_abf.csv\nSee also: ",basename(file[1]),"\n")
+    if(nrow(nearbyGenes)>0) cat(sep='',"\nGenes within a 10Kb window around the 95% credible SNPs from the analysis are tabulated in: nearby_genes_coloc_abf.tsv\n",ifelse(length(file)==2,paste0("See also: ",basename(file[2])),""),"\n")
+    sink()
+  } else {
+    sink(file = logfile, append = T)
+    cat("\nFurther summaries have not been returned because negligible support was found for the shared variant hypothesis (H4).\n")
+    sink() 
+  }
 }
 
 #If both susie calls are successful and credible sets identified, run coloc.susie.
 #Note that plots will overwrite any from Coloc.abf.
 if(!any(SusieFail) && all(sapply(susie_rep[1:2],function(x)x$csFound)) && opt$runMode %in% c("doBoth","trySusie")){
+  
   ###run coloc.susie based on susie outputs and priors set
   clc<- do.call(coloc.susie,c(colocPriors$coloc.susie,list(dataset1=susie[[1]], dataset2=susie[[2]])))
   
-  
-  #Save the coloc abf results as a resource
+  #Save the coloc susie results as an Rds resource
   colocpath<- file.path(datadir,"colocalisation")
   if(!dir.exists(colocpath)){dir.create(colocpath)}
   saveRDS(clc,file=file.path(colocpath,paste0("coloc_susie_",paste0(traits,collapse="_"),".Rds")))
@@ -1119,262 +1200,139 @@ if(!any(SusieFail) && all(sapply(susie_rep[1:2],function(x)x$csFound)) && opt$ru
   cat("This summary is also returned in the file: results_summary_coloc_susie.csv.\n")
   sink()
   
-  #Save the results summary in a table which can be readily combined with other outputs
-  if(nrow(clc$summary)>1){
-    Sum_clcsusie<- c(traits,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc$priors) %>%
-      t() %>%
-      .[rep(1,nrow(clc$summary)),] %>%
-      cbind(.,clc$summary)
-  } else {
-    Sum_clcsusie<- c(traits,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc$priors,clc$summary) %>%
-      t()
-  }
+  ## Save the results summary in a table which can be readily combined with other outputs
+  configSummary <- c(traits,reg_range,region=paste0("Chr", reg_range["chr"],":",reg_range["start"],"-",reg_range["stop"]),clc$priors)
+  if(nrow(clc$summary)>1){ Sum_clcsusie<- t(configSummary) %>% .[rep(1,nrow(clc$summary)),] %>% cbind(.,clc$summary)
+  } else { Sum_clcsusie<- t(c(configSummary,clc$summary)) }
   colnames(Sum_clcsusie)[1:length(traits)] <- paste0("TraitID_",1:length(traits))
-  
   write.table(Sum_clcsusie,file=file.path(tabdir,"results_summary_coloc_susie.csv"),sep = ",",row.names=FALSE,col.names = TRUE,quote = FALSE)
   
-  coloc_performed <- c(coloc_performed, "coloc.susie") #Flag which coloc analysis have been performed 
-}
-
-
-######
-### Prepare to plot the results of colocalisation analysis, and write table if coloc.susie is applied
-#####
-
-#For plotting, generate labels for SNPs with the top 5% posterior probability of being a shared variant
-label_limit <- ceiling(length(snplist)*0.05)
-
-#However, limit the top number of snps to 10 at most 
-if(label_limit>10){ label_limit <- 10 }
-
-toPlot<- list()
-
-if("coloc.abf" %in% coloc_performed){
-  
-  #Colour likely snps under the assumption that h4 is true: " https://chr1swallace.github.io/coloc/articles/a03_enumeration.html
-  toPlot[[1]] <- plotdata.abf %>%
-    arrange(desc(SNP.PP.H4)) %>%
-    mutate(cs_coloc=cumsum(SNP.PP.H4),                                             #Establish coloc.credible set
-           thresh=if_else(row_number() <= label_limit, as.character(snp),""), #Label top snps
-           cs_coloc=case_when(row_number() == 1 ~ "within set",               #Top snp is always within set
-                              lag(cs_coloc) < 0.95 ~ "within set",             #lag checks previous record. If this value is <0.95 then snp is in set
-                              TRUE ~ "outside set"),
-           cs_coloc= factor(cs_coloc,levels=c("within set","outside set")))
-}
-
-if("coloc.susie" %in% coloc_performed){
-  
-  #More descriptive results tabulation
-  clc$results <- sums1.region %>%
-    as.data.frame() %>%
-    dplyr::select(snp,pos) %>%
-    full_join(snp_CS,by="snp") %>%
-    full_join(clc$results,by="snp") %>%
-    rename(cs_susie=cs)
-  
-  #Save PP.H4 summaries, with additional details, to file
-  sets_outpath<- file.path(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv")
-  write.table(clc$results,file=sets_outpath,sep = ",",row.names=FALSE)
-  
-  sink(file = logfile, append = T)
-  cat("\nSNPwise posterior probabilities of being a shared variant for",paste(traits,collapse = " & "),"under coloc.susie are tabulated in:\n", basename(sets_outpath),"\n")
-  sink()
-  
-  #Prepare plotting for each 'row' of coloc.susie
-  for(i in 1:nrow(clc$summary)){
+  possColoc<- clc$summary$PP.H4.abf>0.2
+  if(any(possColoc)){
     
-    #Extract a given plotdata column
-    plotdata <- clc$results[,c(1:3,i+3)]
-    #clc_col_index <- which(grepl("SNP.PP.H4",colnames(plotdata)))
-    
-    #Assign labels to top X% of SNPs, arranged by PP in column
-    plotdata<- plotdata %>%
-      arrange(desc(.[[4]])) %>%
-      mutate(cs_coloc=cumsum(.[[4]]),                                                #Establish coloc.credible set
-             thresh=if_else(row_number() <= label_limit, as.character(snp),""), #Label top snps
-             cs_coloc=case_when(row_number() == 1 ~ "within set",               #Top snp is always within set
-                                lag(cs_coloc) < 0.95 ~ "within set",             #lag checks previous record. If this value is <0.95 then snp is in set
-                                TRUE ~ "outside set"),
-             cs_coloc= factor(cs_coloc,levels=c("within set","outside set")))
-      
-  toPlot[[length(toPlot)+1]] <- plotdata
-  }
-  
-}
-sink(file = logfile, append = T)
-cat("------------------------------\n")
-sink()
-
-######
-### Produce plots recurrently across toPlot list
-#####
-for(i in 1:length(toPlot)){
-  
-  #Extract plotting dataframe
-  clc_col_index <- grep("SNP.PP.H4",colnames(toPlot[[i]]),value = TRUE)
-  plotdata<- toPlot[[i]] %>%
-    rename(SNP.PP=all_of(clc_col_index))
-  
-  #Set parameters for loop according to whether a coloc.abf or coloc.susie analysis is being plotted
-  if(("coloc.susie" %in% coloc_performed && !"coloc.abf" %in% coloc_performed) ||
-     ("coloc.susie" %in% coloc_performed && "coloc.abf" %in% coloc_performed && i!=1)){
-    
-    #Identify the current analysis, for later logic checks
-    current <- "susie"
-    
-    # #Set colour mapping and legend
-    colourMapping = "cs_susie"
-    nameColourLegend<- paste("SuSiE fine-mapping\n(Trait:",coveragePcent,"credible set)")
-    
-    #Determine filename for loop, first identify which cs are compared, then name accordingly
-    if("coloc.abf" %in% coloc_performed){ 
-      ind <- i-1
-    } else {
-      ind <- i
+    #Identify 95% credible SNPs for each comparison row, splitting each row results into a list and then recombining into a single data frame
+    annot <- list()
+    for(i in 2:ncol(clc$results)){
+      annot[[length(annot)+1]]  <- clc$results[,c(1,i),with=FALSE] %>%
+        arrange(desc(.[[2]])) %>%
+        mutate(cs_coloc=cumsum(.[[2]]),                                         #Establish colocalisation credible sets
+               cs_coloc=case_when(row_number() == 1 ~ "within set",             #Top snp is always within set
+                                  lag(cs_coloc) < 0.95 ~ "within set",          #lag checks previous record. If this value is <0.95 then SNP is in set
+                                  TRUE ~ "outside set")) %>%
+        rename_with(.cols="cs_coloc",function(x)paste0("cs_coloc.row",i-1))
     }
-    cs_index<- clc$summary[ind,c("idx1","idx2")]
-    cs_label <- paste(traits,cs_index,sep=":")
-    cs_filenm <- paste(paste(traits,cs_index,sep="cs"),collapse="_")
+    annot <- Reduce(function(x,y)full_join(x,y,by="snp"),annot)
     
-    filename<- file.path(figdir,paste0("coloc.susie_result_all_snps_",cs_filenm,".pdf"))
+    #Add genomic position and susie credible set annotations
+    snpwiseSummary<- sums1.region %>%
+      as.data.frame() %>%
+      dplyr::select(snp,chr,pos) %>%
+      full_join(snp_CS,by="snp") %>%
+      rename(cs_susie=cs) %>%
+      right_join(annot,by="snp")
     
-  } else {
-    #Identify the current analysis, for later logic checks
-    current <- "abf"
-    
-    # # #Set colour mapping and legend
-    colourMapping <- NULL
-    nameColourLegend <- NULL
-    
-    #Determine filename for loop
-    cs_filenm <- ".abf"
-    filename<- file.path(figdir,"coloc.abf_result_all_snps.pdf")
-    
-  }
-  
-  #Set shape mapping and legend
-  shapeMapping <- "cs_coloc"
-  nameShapeLegend <- "Colocalisation\n(95% credible set\nassuming shared\nvariant)"
-  
-  #Build all snps plot, add labels for snps
-  snp_PP <- ggSummaryplot(yaxis="SNP.PP",
-                          xlim=c(reg_range['start'],reg_range['stop']),
-                          chr=reg_range['chr'],
-                          dset=plotdata,
-                          colourMapping=colourMapping,
-                          shapeMapping=shapeMapping,
-                          traits=traits,
-                          facetTraits = FALSE,
-                          nameColourLegend=nameColourLegend,
-                          nameShapeLegend=nameShapeLegend,
-                          build=paste0("GRCh",opt$genomeAlignment))$bpfigure +
-    geom_text_repel(aes(label=thresh), max.overlaps = 20, na.rm=TRUE, show.legend = FALSE)
-  
-  #Saveplot
-  ggsave(filename,snp_PP,device="pdf",units="mm",width=150,height=175)
-  
-  
-  #### Replot colocalised snps based on nearby genes
-  min_bp<-min(plotdata$pos[plotdata$cs_coloc=="within set"])-gene_window #10KB
-  max_bp<-max(plotdata$pos[plotdata$cs_coloc=="within set"])+gene_window #10KB
-  chr<- reg_range["chr"]
-  
-  #Extract genes within the start or stop positions within 
-  #Genes_subset<-Genes[Genes$start_position > min_bp & Genes$end_position < max_bp & Genes$chromosome_name == chr,] %>%
-  Genes_subset <- Genes[Genes$chromosome_name == chr & (
-    (Genes$start_window > min_bp & Genes$start_window < max_bp) |
-      (Genes$end_window > min_bp & Genes$end_window < max_bp) |
-      (Genes$start_window < min_bp & Genes$end_window > max_bp)
-  ),]
-  
-  #If nearby snps are found, do further plotting, otherwise write message
-  if(nrow(Genes_subset)>0){
-
-    #Save details for nearby genes
-    sets_outpath<- file.path(tabdir,paste0("nearby_genes_coloc",cs_filenm,".csv"))
-    Genes_subset %>%
-      arrange(start_position) %>%
-      dplyr::select(-c(start_window,end_window)) %>%
-      write.table(.,file=sets_outpath,sep = ",",row.names=FALSE)
+    ## Save PP.H4 summaries, with additional details, to file
+    write.table(snpwiseSummary,file=file.path(tabdir,"coloc.susie_snpwise_PP_H4_abf.csv"),sep = ",",row.names=FALSE)
     
     sink(file = logfile, append = T)
-    cat("\nGenes located within a 10Kb window around the colocalisation 95% credible set from",ifelse(current=="susie","the current pair of SuSiE credible sets","coloc.abf"), "are tabulated in:", basename(sets_outpath),"\n")
+    cat("\nPer-SNP posterior probabilities for being a shared variant (assuming H4=TRUE) from each pairwise comparison of fine-mapping credible sets across traits are tabulated in: coloc.susie_snpwise_PP_H4_abf.csv\n")
+    cat("\nGenerating additional summaries for pairwise comparisons with PP.H4>0.2 (a low threshold to ensure outputs are produced for every reasonable PP.H4).\n\n")
     sink()
     
-    #If subsetting to named gene sources, generate the vector, and cat message to file if no rows would remain
-    if(!is.null(opt$restrict_nearby_gene_plotting_source)){ 
+    ## Generate the snp PP plot for each row of coloc.susie results
+    snp_PPplots <- lapply(paste0("row",which(possColoc)),function(rows,snpwiseSummary){
       
-      geneSources <-strsplit(opt$restrict_nearby_gene_plotting_source,split=",")[[1]] #String split on comma to identify sources
+      cols <- c("snp","pos","cs_susie",grep(paste0("(",rows,"$|abf)"),colnames(snpwiseSummary),value = TRUE))
       
-      if(sum(Genes_subset$external_gene_source %in% geneSources)==0){                                                     #If at least one gene remains, subset
-        sink(file = logfile, append = T)
-        cat("\nCould not subset nearby gene plotting by source since no genes remained after restricting to", paste0(geneSources,collapse=", "), "\n")
-        sink()
+      #Prepare data for plotting
+      plt <- snpwiseSummary[cols] %>% 
+        rename(SNP.PP=matches("SNP.PP.H4"),
+               cs_coloc=matches("cs_coloc")) %>%
+        arrange(desc(SNP.PP)) %>%
+        mutate(cs_coloc= factor(cs_coloc,levels=c("within set","outside set")),
+               lab = if_else(row_number()<11 & SNP.PP > 0.1 & cs_coloc=="within set",as.character(snp),""))
+      
+      ## Generate the plot
+      snpPP <- ggSummaryplot(dset=plt,
+                             yaxis="SNP.PP",
+                             bp_range=range(plt$pos),
+                             chr=plt$chr[1],
+                             colourMapping="cs_susie",
+                             nameColourLegend=paste0("Fine-mapping\n(Trait: ",coveragePcent," credible set)"),
+                             shapeMapping="cs_coloc",
+                             nameShapeLegend="Colocalisation\n(95% credible SNPs)")$bpfigure +
+        geom_text_repel(aes(label=lab), max.overlaps = 20, na.rm=TRUE, show.legend = FALSE)
+      
+      return(snpPP)
+    },snpwiseSummary)
+    
+    #Identify credible SNP range for each snpPP plot and then mapply across the original plots and the range to visualise nearby genes
+    credibleSnpRange<-lapply(snp_PPplots,function(snpPP)range(snpPP$data$pos[snpPP$data$cs_coloc=="within set"]))
+    
+    ## Stack each plot above nearby genes
+    snpPPstackGenes <- mapply(plotGenesStack,snp_PPplots,credibleSnpRange,
+                              SIMPLIFY = FALSE, MoreArgs = list(
+                                genesInChr=Genes,
+                                geneSources=geneSources,
+                                gene_tracks=opt$gene_tracks,
+                                nudge_y=0.3)
+    )
+    
+    ### Save plots to file
+    
+    #Generate a prefix for plots of each coloc.susie comparison row
+    rowCompares<- paste0(traits[1],"cs",clc$summary$idx1[possColoc],"_",traits[2],"cs",clc$summary$idx2[possColoc])
+    prefix <- sapply(rowCompares,function(x)paste0(c("coloc_susie",x,"SNPposteriorProbs"),collapse="_"))
+    
+    invisible(mapply(function(snp_PPplots,snpPPstackGenes,prefix){
+      ggsave(file.path(figdir,paste0(prefix,".pdf")),snp_PPplots,device="pdf",units="mm",width=150,height=100)
+      if(!"character" %in% class(snpPPstackGenes)){ggsave(file.path(figdir,paste0(prefix,"_nearbygenes.pdf")),snpPPstackGenes,device="pdf",units="mm",width=150,height=175) }
+    },snp_PPplots,snpPPstackGenes,prefix))
+    
+    sink(file = logfile, append = T)
+    cat("Per-SNP posterior probabilities for being a shared variant are plotted in .pdf files, named with the format:",paste0(basename(gsub("[0-9]+","<number>",prefix[1])),collapse="\n"))
+    sink()
+    
+    ## Write out all nearby genes
+    #Identify all genes nearby to the credible snps range for each row
+    nearbyGenes<- lapply(credibleSnpRange,getNearbyGenes,genesInChr=Genes)
+    
+    #If any genes have been matched, then write to a summary table
+    genesMatched<- sapply(nearbyGenes,function(x)nrow(x)>0)
+    if(any(genesMatched)){
+      
+      #Annotate nearby genes lists with comparison rows, and concatenate into a single table
+      allnearbygenes<- mapply(cbind,susie_CS_comparisons=rowCompares[genesMatched],nearbyGenes[genesMatched],SIMPLIFY = FALSE) %>%
+        Reduce(rbind,.)
+      
+      #Check for any top SNPs tagged tagged multiple times, if present concatenate their credible set assignment column and deduplicate the dataset
+      allnearbygenes$checkString <- with(allnearbygenes,paste0(external_gene_name,chromosome_name,start_position,end_position))
+      tab<-table(allnearbygenes$checkString)
+      if(any(tab>1)){
+        dups <- names(tab)[tab>1]
+        for(i in seq_along(dups)){ 
+          duprows<- allnearbygenes$checkString==dups[i]
+          allnearbygenes$susie_CS_comparisons[duprows] <- paste0(allnearbygenes$susie_CS_comparisons[duprows],collapse = ",") 
+        }
+        allnearbygenes <- unique.data.frame(allnearbygenes)
       }
-    } else {
-      geneSources <- NULL
-    }
-    
-    #Plot nearby genes - some steps integrated within the function have already been performed in the main script
-    gene_near <- plotGenes(bp_range=c(min_bp,max_bp),chr=chr,genes=Genes_subset,geneSources=geneSources,
-                           gene_tracks=opt$gene_tracks,nudge_y=0.3)
-    
+      allnearbygenes$checkString <- NULL
       
-    
-    #Narrow the snp plot xlim to match gene_near
-    suppressMessages({ #Suppress warning about 'double-setting' xlim
-      snp_PP_range <- snp_PP +
-        xlim(gene_near$xlim)+
-        theme(axis.title.x = element_blank(),
-              axis.text.x = element_blank())
-    })
-    
-    #If susie has been plotted, colouring is used to label Susie credible sets, adjust legend to include only snps in the new plot range
-    if(current=="susie"){ 
-      #To ensure consistent colouring when reassigning the colour factor, assign factor levels to specific colours
-      levels<- levels(plotdata[[colourMapping]])
-      col_levels <-ggpalette[1:length(levels)]
-      names(col_levels)<- levels
+      allnearbygenes %>%
+        dplyr::select(-c(start_window,end_window)) %>%
+        write.table(.,file=file.path(tabdir,paste0("nearby_genes_coloc_susie.tsv")),sep = "\t",row.names=FALSE)
       
-      suppressMessages({ #Suppress warning about redoing existing legend
-        snp_PP_range <- snp_PP_range +
-          scale_colour_manual(na.value = "black", values=col_levels,
-                              breaks = levels(droplevels(plotdata[which(plotdata$pos > gene_near$xlims[1] & plotdata$pos < gene_near$xlims[2]),colourMapping])))
-      })
+      sink(file = logfile, append = T)
+      cat("\nGenes within a 10Kb window around the 95% credible SNPs from pairwise comparisons with PP.H4>0.2 are tabulated in: nearby_genes_coloc_susie.tsv\n")
+      sink()
     }
-    
-    #Scale plot proportions according to number of genes plotted, but cap at 1, indicating equal proportions
-    
-    #To accommodate labelling when using track-based plotting, give extra buffer room per track
-    if(is.null(gene_near$plot$data$track)){
-      propor <- 0.05*length(gene_near$plot$data$external_gene_name)
-    } else {
-      propor <- 0.2*length(levels(gene_near$plot$data$track))
-    }
-    if(propor>1){propor <- 1}
-    
-    g_arr <- (snp_PP_range/gene_near$plot)+
-      plot_layout(guides = 'collect',heights=c(1,propor))
-    
-    
-    #If plotting the result of coloc.susie analysis, add extra info relevant to credible set assignments 
-    if(current=="susie"){
-      filename<- file.path(figdir,paste0("coloc_susie_likely_snps_with_genes",cs_filenm,".pdf"))
-      
-    } else {
-      filename<- file.path(figdir,"coloc_abf_likely_snps_with_genes.pdf")
-    }
-    
-    ggsave(filename,g_arr,device="pdf",units="mm",width=150,height=175)
-    
-  } else { #Conditional statement for when no nearby genes are found
-    
+  } else {
     sink(file = logfile, append = T)
-    cat("\nNo genes were identified within a 10Kb window around the colocalisation 95% credible set from ",ifelse(current=="susie",paste0("the current SuSiE credible sets comparison:",gsub("_"," & ",cs_filenm)),"coloc.abf"),".\n",sep="")
-    sink()
-    
+    cat("\nFurther summaries have not been returned because negligible support was found for the shared variant hypothesis (H4).\n")
+    sink() 
   }
 }
+    
 } #Bracket indicating the end of the else condition performed when opt$runMode!="finemapOnly"
 
 ######
@@ -1402,6 +1360,6 @@ if(!is.null(opt$rdsOut)){
 
 sink(file = logfile, append = T)
 cat("------------------------------\n")
-cat("An html report overviewing the SuSiE finemapping analysis and quality control can be found in the main results directory.\n")
+cat("An html report overviewing the SuSiE fine-mapping analysis and quality control can be found in the main results directory.\n")
 cat("Please review this log for other steps and the plots directory for figures comparing across traits used for colocalisation analysis.\n")
 sink()

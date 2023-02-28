@@ -14,7 +14,7 @@ Plink binary files are also required to provide a reference panel for SNP alignm
 
 The main `colocaliseRegion.R` script can accept several input and analysis configurations. Documentation for these operations are available by running `Rscript ./scripts/colocaliseRegion.R --help`.
 
-Likewise, `gwasSummaryPlotter.R` can be used to compare measures provided for summary statistic pairs (e.g. for beta values, p-values, finemapping PIPs from the SuSiE software). Documentation for this script is available by calling: `Rscript ./scripts/gwasSummaryPlotter.R --help`
+Likewise, `gwasSummaryPlotter.R` can be used to compare measures provided for summary statistic pairs (e.g. for beta values, p-values, fine-mapping PIPs from the SuSiE software). Documentation for this script is available by calling: `Rscript ./scripts/gwasSummaryPlotter.R --help`
 
 The structure of the `runColocaliseRegion.job` script provides an example of how the analysis can be configured when running `loopColocaliseRegion.sh`.
 
@@ -70,15 +70,12 @@ The PLINK software (v1.90) must be installed before calling to `colocaliseRegion
 
 PLINK2 is not a dependency of the main workflow but is required for the `./scripts/prep_1kg.sh` script, which is used to prepare the LD reference files for the 1000 genomes sample (see the relevant [section](https://github.com/ThomasPSpargo/COLOC-reporter#loopcolocaliseregionsh-input-files) below).
 
-
 ### `loopColocaliseRegion.sh` input files
 
 __set.regions.txt__
 
 Analyses to run should be identified in the `./scripts/set.regions.txt` file. The first column provides a comma-delimited list of IDs for traits with configurations declared in the `GWAS_samples.txt` file (see below). Column two indicates the genomic region to analyse. The genomic locus should be specified as a comma separated list of the format "chromosome,start_position,end_position" (e.g. 17,43460501,44865832).  Any subsequent columns within this file are ignored.
 
-
- 
 The file should contain a header row (which is ignored) and fields should be tab-delimited. An example of the minimal format for the file, including several possible trait configurations is visualised here:
  
  |traits|region|
@@ -93,7 +90,7 @@ The first 3 rows of this example file indicate that each analysis (a row) should
 
 Rows 4 and 5 respectively indicate that a region should be analysed across 3 traits or a single trait. All steps prior to colocalisation analysis are performed when supplying either 1 or 3+ traits. When 1 trait is supplied, analysis stops after fine-mapping is complete. When 3+ traits are supplied, only the first two traits are currently taken forward for colocalisation analysis.
 
-The `--runMode` option of `colocaliseRegion.R` allows further control over the analysis protocol (e.g. setting `finemapOnly` declares that only processing steps until and including finemapping should be performed)
+The `--runMode` option of `colocaliseRegion.R` allows further control over the analysis protocol (e.g. setting `finemapOnly` declares that only processing steps until and including fine-mapping should be performed)
 
 Note: If analysis regions have been identified using the LAVA local genetic correlation [software](https://github.com/josefin-werme/lava), then we provide a script for readily identifying target regions from LAVA output files and generating the file `set.regions.txt` (See the __[LAVA integration](https://github.com/ThomasPSpargo/COLOC-reporter#lava-integration])__ section below).
 
@@ -102,13 +99,13 @@ __GWAS_samples.txt__
 
 Information about the input configurations for traits to analyse should be detailed in the `./scripts/GWAS_samples.txt` file. An example this file is as follows:
 
-ID|type|prop|traitSD|p_col|stat_col|N_col|chr_col|pos_col|se_col|snp_col|freq_col|traitLabel|FILEPATH
----|---|---|---|---|---|---|---|---|---|---|---|---|---
-ALS|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|FREQ|Amyotrophic lateral sclerosis|/path/to/sumstats/file.extension
-AZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Alzheimer's Disease|/path/to/sumstats/file.extension
-FTD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Frontotemporal dementia|/path/to/sumstats/file.extension
-PD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|FREQ|Parkinson's Disease|/path/to/sumstats/file.extension
-SZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|REF.FREQ|Schizophrenia|/path/to/sumstats/file.extension
+ID|type|prop|traitSD|p_col|stat_col|N_col|chr_col|pos_col|se_col|snp_col|A1_col|A2_col|freq_col|traitLabel|FILEPATH
+---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---
+ALS|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|A1|A2|FREQ|Amyotrophic lateral sclerosis|/path/to/sumstats/file.extension
+AZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|A1|A2|REF.FREQ|Alzheimer's Disease|/path/to/sumstats/file.extension
+FTD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|A1|A2|REF.FREQ|Frontotemporal dementia|/path/to/sumstats/file.extension
+PD|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|A1|A2|FREQ|Parkinson's Disease|/path/to/sumstats/file.extension
+SZ|cc|0.5|NA|P|BETA|N|CHR|BP|SE|SNP|A1|A2|REF.FREQ|Schizophrenia|/path/to/sumstats/file.extension
 
 The column headers used in the template should be included. Each column indicates the following:
 - ID: Character string indicating trait ID strings set in the `set.regions.txt` input file (see above)
@@ -122,7 +119,9 @@ The column headers used in the template should be included. Each column indicate
 - pos_col: Column name for genomic position
 - se_col: Column name for standard error of beta coefficients
 - snp_col: Column name for SNP ids, rsID is expected
-- freq_col: Column name for allele frequency. Any SNPs with `freq>0.5` will be adjusted (`1-freq`) to obtain minor allele frequency (MAF).
+- A1_col: Column name for effect allele
+- A2_col: Column name for reference allele
+- freq_col: Column name for allele frequency. Any SNPs with `freq>0.5` will be adjusted (`1-freq`) to obtain minor allele frequency (MAF)
 - traitLabel: A long name for the trait, to be used for plotting
 - FILEPATH: Path to summary statistics file (`.gz` compressed files can be used)
 
@@ -148,35 +147,48 @@ Note that running `prep_1kg.sh` produces a directory of final size `2.2GB` but a
 
 ### Analysis protocol
 
-Analysis can be include only finemapping, only colocalisation, or a combination of these steps.
+Analysis can be include only fine-mapping, only colocalisation, or a combination of these steps.
 
-Colocalisation analysis performed without prior finemapping uses the `coloc.abf` function. Colocalisation analysis including the SuSiE finemapping step is performed with the `coloc.susie` function. Finemapping analysis is performed using the `runsusie` function, which is a wrapper around `susieR::susie_rss` and is provided within the COLOC package. Note that colocalisation analysis with `coloc.susie` is only possible when at least one credible set is identified in both of two traits during the finemapping step.
+Colocalisation analysis performed without prior fine-mapping uses the `coloc.abf` function. Colocalisation analysis including the SuSiE fine-mapping step is performed with the `coloc.susie` function. Fine-mapping analysis is performed using the `runsusie` function, which is a wrapper around `susieR::susie_rss` and is provided within the COLOC package. Note that colocalisation analysis with `coloc.susie` is only possible when at least one credible set is identified in both of two traits during the fine-mapping step.
 
-Finemapping results will be returned for all traits defined for a given analysis. Any number of traits can be defined up to and including this step. However, note that only SNPs common to all supplied traits and the LD reference will be retained.
+Fine-mapping results will be returned for all traits defined for a given analysis. Any number of traits can be defined up to and including this step. However, note that only SNPs common to all supplied traits and the LD reference will be retained.
 
 Colocalisation analysis can be performed only for pairs of traits. Therefore, this is currently performed using only the first two traits defined. If more than two traits are supplied for an analysis which is declared to include colocalisation analysis, then steps prior to colocalisation are completed for all traits before subsetting to the first two traits declared.
 
 The main analysis protocol is controlled using the `--runMode` option of `colocaliseRegion.R`. This has 4 possible settings:
-- `doBoth` (the default):  both `coloc.abf` and `coloc.susie` will run, assuming finemapping is successful for both traits supplied to `coloc.susie`
-- `trySusie`: `coloc.susie` will be used if SuSiE finemapping identifies at least 1 credible set in each trait and `coloc.abf` is returned otherwise
+- `doBoth` (the default):  both `coloc.abf` and `coloc.susie` will run, assuming fine-mapping is successful for both traits supplied to `coloc.susie`
+- `trySusie`: `coloc.susie` will be used if SuSiE fine-mapping identifies at least 1 credible set in each trait and `coloc.abf` is returned otherwise
 - `skipSusie`: only `coloc.abf` will be applied, and processes necessary for `coloc.susie` are skipped (e.g. no need to call to plink and generate the linkage disequilibrium matrix)
-- `finemapOnly`: finemapping is performed for each trait and any colocalisation analyses are skipped
+- `finemapOnly`: fine-mapping is performed for each trait and any colocalisation analyses are skipped
+
+Some other important options to consider when running analysis within the `colocaliseRegion.R` script are:
+
+- `--finemap_refine`: Logical, defaulting to FALSE. Specify TRUE to add a refinement step to SuSiE finemapping call to avoid identification of local maxima.
+- `--finemap_initialL`: Numeric, defaulting to 10, the susie default, to indicate the maximum number of non-zero effects to allow in the initial susie regression model.
+- `--finemap_increaseL`: Logical, defaulting to TRUE which indicates that higher values of L should be attempted in susie finemapping (with L+10 for each loop) when the number of credible sets found are ≥L-2. Setting this to FALSE will allow one finemapping run only, using the L setting specified in the --finemap_initialL option.
+
+- `--finemap_CScoverage`: Numeric between 0 and 1 to indicate the credible set threshold to use for finemapping; defaults to 0.95, which returns 95% credible sets.
+- `--priors_coloc.abf`: Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in `coloc.abf` function; default values are '1e-4,1e-4,1e-5' the `coloc.abf` default settings.
+- `--priors_coloc.susie`: Comma separated list of 3 numerics indicating priors to set respectively for p1,p2,p12 in `coloc.susie` function; default values are '1e-04,1e-04,5e-06', the `coloc.susie` default settings (passed through to `coloc.bf_bf` function).
+
+
+
 
 ### Quality control
 
-Quality control checks are performed prior to finemapping analysis to test whether the GWAS summary statistic effect estimates are consistent with the LD matrix supplied. When an LD matrix is provided from an out-of-sample population, inconsistency could indicate a poor ancestry match between the reference and GWAS samples.
+Quality control checks are performed prior to fine-mapping analysis to test whether the GWAS summary statistic effect estimates are consistent with the LD matrix supplied. When an LD matrix is provided from an out-of-sample population, inconsistency could indicate a poor ancestry match between the reference and GWAS samples.
 
 The main results from quality control checks performed are returned in the `./coloc/results/<prefix>_coloc/finemapQC` directory.
 
 __Testing consistency between GWAS and LD matrix__
 
-The SuSiE [`estimate_s_rss`](https://stephenslab.github.io/susieR/reference/estimate_s_rss.html) function returns a global measure of consistency between the summary statistic Z-scores (calculated from `beta` and `SE`) and LD matrix provided (see function documentation for details). This measure is a value between 0 and 1 where higher numbers indicate greater inconsistency. This can help identify whether to be cautious in interpreting finemapping results. However, there is not a clear threshold defining which values are reasonable. 
+The SuSiE [`estimate_s_rss`](https://stephenslab.github.io/susieR/reference/estimate_s_rss.html) function returns a global measure of consistency between the summary statistic Z-scores (calculated from `beta` and `SE`) and LD matrix provided (see function documentation for details). This measure is a value between 0 and 1 where higher numbers indicate greater inconsistency. This can help identify whether to be cautious in interpreting fine-mapping results. However, there is not a clear threshold defining which values are reasonable. 
 
 We perform this check in 2 stages.
 
 First, consistency is checked across SNPs available (using all 3 estimation methods provided) after harmonising data across traits and to the reference population. If any SNPs are identified in the Z-score outliers step (see below) as having potentially reversed allele order, the check is repeated after flipping the valence of the effect estimate for these putatively reversed SNPs.
 
-Second, consistency is checked using the default 'null-mle' method only  for the dataset analysed by susie, and this result is returned alongside the overall finemapping results in the column 'LD_Zscore_consistency'. Note that this dataset may correspond exactly to the one from the first check, but could contain either fewer SNPs or some SNPs with flipped effect estimates according to the results of the Z-score outliers check and analysis settings.
+Second, consistency is checked using the default 'null-mle' method only  for the dataset analysed by susie, and this result is returned alongside the overall fine-mapping results in the column 'LD_Zscore_consistency'. Note that this dataset may correspond exactly to the one from the first check, but could contain either fewer SNPs or some SNPs with flipped effect estimates according to the results of the Z-score outliers check and analysis settings.
 
 We suggest evaluating this measure in the context of your results. In particular, the reasonability of any credible sets identified and the SNP-wise PIP estimates should be checked against GWAS p-values, betas, or Z-scores.
 
@@ -191,18 +203,18 @@ We use this function to:
 
 If any SNPs are flagged as having a potentially flipped effect estimate, we:
 - Always repeat the GWAS and LD matrix consistency check in a dataset with these values flipped (see above)
-- Offer options (controlled by `--finemapQC_handleBetaFlips`) for proceding with finemapping and subsequent colocalisation analysis steps. These options are to:
+- Offer options (controlled by `--finemapQC_handleBetaFlips`) for proceding with fine-mapping and subsequent colocalisation analysis steps. These options are to:
  - continue with an unchanged datset
  - omit (across all traits) any SNPs identified as having potentially erroneous encoding
  - to flip the direction of the beta statistic for those SNPs flagged on a trait-by-trait basis
  
- By default, we omit SNPs with putatively flipped effect estimates from the analysis, since these can substantially affect the SuSiE finemapping result.
+ By default, we omit SNPs with putatively flipped effect estimates from the analysis, since these can substantially affect the SuSiE fine-mapping result.
  
  The option to invert the effect estimates may improve convergence of SuSiE but should be used cautiously. This is because allele order has been harmonised between the the LD reference and the summary statistics, and therefore this flip is performed under the assumption of an allele order encoding error in the summary statistics.
 
 __Checking convergence__
 
-The number of iterations required for successful convergence of the SuSiE finemapping model is returned in the analysis log file. The [manuscript](https://doi.org/10.1371/journal.pgen.1010299) describing the approach notes that a high number of iterations can result from large inconsistencies between the LD matrix and the summary statistics. Considering the number of iterations required may help further identify if finemapping issues have occured.
+The number of iterations required for successful convergence of the SuSiE fine-mapping model is returned in the analysis log file. The [manuscript](https://doi.org/10.1371/journal.pgen.1010299) describing the approach notes that a high number of iterations can result from large inconsistencies between the LD matrix and the summary statistics. Considering the number of iterations required may help further identify if fine-mapping issues have occured.
 
 ### Outputs
 
@@ -212,14 +224,14 @@ _Analysis summary_
 
 The file `./coloc/results/<prefix>_coloc/colocalisation.log`, where `<prefix>` identifies the name given to a particular analysis, gives an overview of the results obtained from `colocaliseRegion.R`. The summary includes description of initial summary statistic processing and indicates where more detailed analysis outputs can be found.
 
-The file `./coloc/results/<prefix>_coloc/analysis_report.html` contains a comprehensive report of the finemapping step and related quality control across traits analysed. The other steps are not yet implemented into a report so please refer to the `colocalisation.log` file for now.
+The file `./coloc/results/<prefix>_coloc/analysis_report.html` contains a comprehensive report of the fine-mapping step and related quality control across traits analysed. The other steps are not yet implemented into a report so please refer to the `colocalisation.log` file for now.
 
-The directory `./coloc/results/<prefix>_coloc/tables/` contains all tabular summaries generated within completed analyses. The most important outputs, which overview finemapping and colocalisation result, can be found in:
+The directory `./coloc/results/<prefix>_coloc/tables/` contains all tabular summaries generated within completed analyses. The most important outputs, which overview fine-mapping and colocalisation result, can be found in:
 - `results_summary_coloc_abf.csv`
 - `results_summary_coloc_susie.csv`
 - `results_summary_finemapping.csv`
 
-The directory `./coloc/results/<prefix>_coloc/plots/` contains various figures generated to facilitate interpretation of finemapping and colocalisation results. These should be interpreted in the context the main finemapping and colocalisation results.
+The directory `./coloc/results/<prefix>_coloc/plots/` contains various figures generated to facilitate interpretation of fine-mapping and colocalisation results. These should be interpreted in the context the main fine-mapping and colocalisation results.
 
 The `colocalisation.log` file gives some details about each file returned.
 
@@ -237,21 +249,68 @@ The directory `./coloc/results/<prefix>_coloc/data/` stores primarily .Rds files
 
 Some files returned within `./coloc/results/<prefix>_coloc/tables/` may also be helpful for performing additional investigations not implemented within this workflow.
 
+__Sensitivity analysis of colocalisation results__
+
+Colocalisation analysis results are dependent upon the priors specified before the analysis is performed. The robustness of results to changes in priors can be tested with a sensitivity analysis; see the following [vignette](http://chr1swallace.github.io/coloc/articles/a04_sensitivity.html) for details.
+
+The coloc function [`sensitivity`](http://chr1swallace.github.io/coloc/reference/sensitivity.html) allows this analysis to be readily performed, and this can be used upon `coloc.susie` and `coloc.abf` results objects stored in the .Rds files available  in the `./coloc/results/<prefix>_coloc/data/colocalisation/` directory.
+
+ggplots indicating the sensitivity to prior values can also be obtained by running the `./scripts/colocSensitivity.R` script. Run `Rscript ./scripts/colocSensitivity.R --help` For operational details.
+
 __Concatentating across multiple analyses__
 
-Summary tables of the overall results of finemapping and colocalisation analyses (performed using the functions `coloc.abf`, `coloc.susie` and, `runsusie` from the R `coloc` [package](https://chr1swallace.github.io/coloc/articles/a01_intro.html)) are returned when running `colocaliseRegion.R`. 
+_Results files_
+
+Summary tables of the overall results of fine-mapping and colocalisation analyses (performed using the functions `coloc.abf`, `coloc.susie` and, `runsusie` from the R `coloc` [package](https://chr1swallace.github.io/coloc/articles/a01_intro.html)) are returned when running `colocaliseRegion.R`. 
 
 When performing a series of analyses with `loopColocaliseRegion.sh`, this summary will be returned for each analysis individually. Running the following script will concatenate results summaries across these steps from multiple analyses into summary files:
 
 ```
 #The trailing argument points to the parent directory to which all results have been returned
-bash ./scripts/regionLoopSummary.sh ./coloc/results
+bash ./scripts/collectResultsSummaries.sh ./coloc/results
 ```
 
 The file `./results/summary_all_coloc_abf.csv` is returned if any results from `coloc.abf` are identified, and equivalently `./results/summary_all_coloc_susie.csv` is returned when identifying results from `coloc.susie`.
 
-The results from univariate finemapping performed with SuSiE are returned in the file `./results/summary_all_finemapping.csv`.
+The results from univariate fine-mapping performed with SuSiE are returned in the file `./results/summary_all_finemapping.csv`.
 
+_Figures_
+
+Some of the main figures produced across analyses can be collected into a single .Rds file to allow customisation, arrangement into multi-panel figures or for saving with custom formatting.
+
+To collect figures of comparisons of GWAS summary statistics across all analyses, use the script: `./scripts/collectGWASSummaryPlots.sh`
+
+To collect heatmaps of linkage disequilibrum relative to the top PIP SNPs from credible sets identified across traits from all analyses, use the script: `./scripts/collectCredibleSetLDPlots.sh`
+
+Before running either script, please adapt the script to specify the full path to the `./scripts` directory.
+
+The scripts for collecting plots across multiple analyses can be run one of two ways.
+
+Option 1:
+- Navigate to the parent directory for all analyses  from `loopColocaliseRegion.sh`
+- Run the scripts, declaring the full file path to the script
+
+```
+cd ./coloc/results
+
+bash <yourFilePath>/scripts/collectGWASSummaryPlots.sh
+#Output: allSummaryFigures.Rds
+
+bash <yourFilePath>/scripts/collectCredibleSetLDPlots.sh
+#Output: allCSLDFigures.Rds
+```
+
+Option 2:
+
+ - After specifying the scripts file path within the script, run script(s) from the main coloc.reporter directory
+ - Declare in the first trailing argument the parent directory containing all analyses from `loopColocaliseRegion.sh`.
+ - (optionally) Declare in the second trailing argument the file path and file name (without file extension) for the output .Rds file
+
+```
+bash ./scripts/collectGWASSummaryPlots.sh ./coloc/results ./coloc/results/allSummaryFigures
+
+bash ./scripts/collectCredibleSetLDPlots.sh ./coloc/results ./coloc/results/allCSLDFigures
+```
 
 ### LAVA integration
 

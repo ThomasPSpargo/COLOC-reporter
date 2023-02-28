@@ -47,6 +47,21 @@ assignToList <- function(x,value,name=NULL,envir = .GlobalEnv,multi=FALSE){
   }
 }
 
+#Simple matching function to obtain genes within a chromosome nearby to a base pair window
+# set highConfidence to TRUE to only return genes which encompass the full BP range
+getNearbyGenes <- function(bp_range,genesInChr,highConfidence=FALSE){
+  if(!highConfidence){
+    nearbyGenes<-  genesInChr[with(genesInChr,
+                                   (start_window > min(bp_range) & start_window < max(bp_range)) | # Test if start position is within range
+                                     (end_window > min(bp_range) & end_window < max(bp_range)) |   # or if end position is within range
+                                     (start_window < min(bp_range) & end_window > max(bp_range))   # or if start and end positions are both outside range [gene straddles window]
+    ),]
+  } else {
+    nearbyGenes<-  genesInChr[genesInChr$start_window < min(bp_range) & genesInChr$end_window > max(bp_range),]   # Only return instances where the gene straddles the window
+  }
+  return(nearbyGenes)
+}
+
 #This is a wrapper around render to simplify report writing
 renderReport<- function(params,outfile,template){
   rmarkdown::render(template,

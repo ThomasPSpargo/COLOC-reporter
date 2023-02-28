@@ -22,12 +22,12 @@ option_list = list(
               help="Logical, defaults to FALSE. When --GWASsumplots has more then one element, indicate TRUE to return all comparisons bound into a single figure; plots will be stacked vertically, in the order of the --GWASsumplots vector."),
   make_option("--GWASsumplots_incfinemapping", action="store", default=TRUE, type='logical',
               help="Logical, defaults to TRUE. If TRUE, and if any credible sets are identified across the two traits, plots returned by --GWASsumplots will include colouring indicating (if any) the finemapping credible sets assigned to each snp."),
-  make_option("--genomeAlignment", action="store", default=37, type='numeric',
-              help="Indicate the reference genome to which summary statistics and LD reference are aligned. Defaults to 37."),
   make_option("--helperFunsDir", action="store", default=NULL, type='character',
               help="Filepath to directory containing helper functions used within the script"),
   make_option("--rdsOut",action="store", default=NULL, type='character',
-              help="Specify a directory in which to return figures within an Rds file [optional]"),
+              help="Specify a file path and prefix for an Rds file containing ggplots generated within this script '.Rds' will be appended [optional]"),
+  make_option("--rdsOnly", action="store", default=FALSE, type='logical',
+              help="Logical, defaulting to FALSE, if set to TRUE, plots will only output as .Rds files; see the --rdsOut option."),
   make_option("--outdir", action="store", default=NULL, type='character',
               help="Filepath to directory to which files will be written")
 )
@@ -44,9 +44,11 @@ suppressPackageStartupMessages({
   library(patchwork)     #arranging summary plot
 })
 
+if(is.null(opt$outdir) && is.null(opt$rdsOut)) { cat("ERROR: Please specify arguments to either or both of --rdsOut and --outdir. Terminating script\n"); q("no") }
+if(opt$rdsOnly && is.null(opt$rdsOut)) warning("Rds files will not be saved the --rdsOut option has not been set.")
 
 test <- FALSE # test <- TRUE
-if(test==TRUE){
+if(test){
   #####
   setwd("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing")
   
@@ -55,13 +57,12 @@ if(test==TRUE){
   opt$traits <- "PD,SZ"
   
   opt$GWASconfig <- "./GWAS_samples_testing.txt"
-  opt$genomeAlignment <- 37
-  
+
   opt$GWASsumplots <- c("PIP,p,beta")
   opt$GWASsumplots_onefile <- FALSE
   opt$GWASsumplots_incfinemapping <- TRUE
   
-  opt$rdsOut <- "~/Downloads"
+  opt$rdsOut <- "~/Downloads/testfile"
   
   opt$outdir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/plots"
   
@@ -145,9 +146,7 @@ if("z" %in% tolower(opt$GWASsumplots) && any(!c("beta","SE") %in% names(data)) |
   opt$GWASsumplots <- opt$GWASsumplots[!grepl("z",tolower(opt$GWASsumplots))]
 }
 
-if(length(opt$GWASsumplots)==0){
-  stop("No valid options for summary plotting remain. Terminating script")
-}
+if(length(opt$GWASsumplots)==0){ cat("No valid options for summary plotting remain. Terminating script\n") ; q("no") }
 cat("Measures to plot: ", paste0(opt$GWASsumplots,collapse = ", "),"\n",sep='')
 
 
@@ -174,21 +173,22 @@ ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00",
 #Internally, recode preset options according to the element specified to 'yaxis'.
 ggsummaryplot <- lapply(opt$GWASsumplots,ggSummaryplot,
                         dset=data,
-                        xlim=range(data$pos),
+                        bp_range=range(data$pos),
                         chr=data$chr[1],
                         colourMapping=colourMapping,
                         traits=traits,
                         facetNrow=ifelse(opt$GWASsumplots_onefile,2,1),
                         nameColourLegend="Trait: Credible set",
                         facetTraits=isTwoTraits,
-                        build=paste0("GRCh",opt$genomeAlignment),
                         compareTraits=isTwoTraits)
 names(ggsummaryplot)<- opt$GWASsumplots
 
 #Write individual plots to rds file
 if(!is.null(opt$rdsOut)){ 
-  if(!dir.exists(opt$rdsOut)) dir.create(opt$rdsOut,recursive = TRUE)
-  saveRDS(ggsummaryplot,file.path(opt$rdsOut,"SummaryFigs.Rds"))
+  if(!dir.exists(dirname(opt$rdsOut))) dir.create(dirname(opt$rdsOut),recursive = TRUE)
+  saveRDS(ggsummaryplot,paste0(opt$rdsOut,".Rds"))
+  
+  if(opt$rdsOnly) q(save="no")
 }
 
 #If more than one file requested, concatenate

@@ -1,34 +1,24 @@
 #!/bin/bash
-#SBATCH --partition=cpu
-#SBATCH --mem-per-cpu=10G
-#SBATCH --time=0-1:00
-#SBATCH --tasks=1 
 
 #####
-# INPUT files
+# Inputs
 #####
 
-
-#Path to the script to run
+#Directory containing all scripts
 scriptpath=$1
 
-	
 # extract phenotype IDs and locus to analyse
 traits=$2
 locus=$3
 
-
 #Set analysis options
 LDREFERENCE=$4		#File path and prefix for LD reference plink-binary files
-outpath=$5		#File path and prefix for the output files.
-sumplots=$6		#Which summary plots to generate
+outpath=$5			#File path and prefix for the output files.
+sumplots=$6			#Which summary plots to generate
 
-#Path to plink executable
-plinkpath=${7}
+plinkpath=${7}		#Path to plink executable
 
-#Which analyses to run
-runMode=${8}
-	
+runMode=${8} 		#Which analyses to run
 
 tmp_dir=$(mktemp -d -t ci-XXXXXXXXXX)
 
@@ -51,6 +41,8 @@ Rscript ${scriptpath}/colocaliseRegion.R \
 		--finemap_refine FALSE \
 		--finemapQC_handleBetaFlips drop \
 		--finemap_CScoverage 0.95 \
+		--priors_coloc.abf "1e-4,1e-4,1e-5" \
+		--priors_coloc.susie "1e-04,1e-04,5e-06" \
 		--out $outpath \
 		--rdsOut "${outpath}_coloc/data/globalReportInputs" \
 		--traits $traits \
@@ -68,7 +60,18 @@ Rscript ${scriptpath}/gwasSummaryPlotter.R \
 		--GWASsumplots_onefile FALSE \
 		--GWASsumplots_incfinemapping TRUE \
 		--helperFunsDir "${scriptpath}/helper_functions" \
-		--rdsOut "${outpath}_coloc/data/globalReportInputs" \
+		--rdsOut "${outpath}_coloc/data/globalReportInputs/SummaryFigs" \
+		--outdir "${outpath}_coloc/plots" 
+
+
+printf "\nAttempting to generate LD heatmaps for fine-mapping credible sets across all traits\n"
+
+Rscript ${scriptpath}/crosstrait_CS_LDHeatmaps.R \
+		--susieFitsDir ${outpath}_coloc/data/finemapping \
+		--LDinfo ${outpath}_coloc/data/LDmatrix/ld_matrix \
+		--harmonisedSumstats ${outpath}_coloc/data/datasets/harmonised_sumstats.csv \
+		--helperFunsDir "${scriptpath}/helper_functions" \
+		--rdsOut "${outpath}_coloc/data/globalReportInputs/crossTraitLDHeatmaps" \
 		--outdir "${outpath}_coloc/plots" 
 	
 printf "\nGenerating global report\n"

@@ -13,6 +13,7 @@ params:
   P02: "P02.Rds"
   P03: "P03.Rds"
   summaryFigures: "SummaryFigs.Rds"
+  crossTraitHeatmaps: "crossTraitLDHeatmaps.Rds"
   rmdDir: NULL
   rdsInputDir: NULL
   funsDir: NULL
@@ -29,6 +30,8 @@ Each param of P01..3 stores a list of parameters which are to be passed to the c
 P02 is a list with params required to generate multiple reports, individually for each trait. This chunk is therefore generated recursively.
 
  - summaryFigures points to an Rds file containing a list of summary plots between trait pairs that were finemapped
+ 
+ - crossTraitHeatmaps points to an Rds file containing a list of heatmaps generated across traits, comparing LD across all credible sets
 
  - rmdDir is the directory containing all child report template files
 
@@ -57,10 +60,11 @@ parentParams <- params
 unlockBinding("params",env=environment()) 
 
 
-#For testing
-#parentParams$funsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
-#parentParams$rmdDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/rmd"
-#parentParams$rdsInputDir <- "~/Downloads"
+# #For testing
+# parentParams$funsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
+# parentParams$rmdDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/rmd"
+# parentParams$rdsInputDir <- "~/Downloads"
+# parentParams$rmIntermediates <- FALSE
 
 ## Read-in custom helper functions [required for successful generation of the finemap report]
 list.files(parentParams$funsDir,full.names = TRUE,pattern=".R") %>%
@@ -84,6 +88,7 @@ if(!is.null(parentParams$rdsInputDir)){
   parentParams$P02 <- file.path(parentParams$rdsInputDir,parentParams$P02)
   parentParams$P03 <- file.path(parentParams$rdsInputDir,parentParams$P03)
   parentParams$summaryFigures <- file.path(parentParams$rdsInputDir,parentParams$summaryFigures)
+  parentParams$crossTraitHeatmaps <- file.path(parentParams$rdsInputDir,parentParams$crossTraitHeatmaps)
 }
 
 #Set null any inputs which cannot be identified
@@ -91,6 +96,7 @@ if(!file.exists(parentParams$P01)) parentParams$P01 <- NULL
 if(!file.exists(parentParams$P02)) parentParams$P02 <- NULL
 if(!file.exists(parentParams$P03)) parentParams$P03 <- NULL
 if(!file.exists(parentParams$summaryFigures)) parentParams$summaryFigures <- NULL
+if(!file.exists(parentParams$crossTraitHeatmaps)) parentParams$crossTraitHeatmaps <- NULL
 
 
 ```
@@ -142,26 +148,42 @@ Placeholder
 ___
 
 ```{r, include=FALSE}
-#Provisionally read-in the summary figures and only include them in the report if two traits are being compared [otherwise the plots are simple duplicates of the SNP-wise summaries produced within the  finemapping report]
+#Provisionally read-in the SNPwise and credible set LD summary figures.
+#Only include these figures in the report if two traits are being compared [otherwise the plots are simple duplicates of the SNP-wise CS LD summaries produced within the individual finemapping report]
 
-if(!is.null(parentParams$summaryFigures)){
-  #Save figs list and (for known columns) assign report-friendly names
-  figs <- readRDS(parentParams$summaryFigures)
+#SNPwise summary figures
+if(!is.null(parentParams$summaryFigures)){ figs <- readRDS(parentParams$summaryFigures)
   
-  #Logical check whether to plot figs  
+  #Logical check whether to plot figs
   plotFigs <- "traitxy_figure" %in% names(figs[[1]])
-
 } else {
   plotFigs <- FALSE #Otherwise default to false
 }
+
+#Credible set LD heatmaps
+if(!is.null(parentParams$crossTraitHeatmaps)){ heatmaps<- readRDS(parentParams$crossTraitHeatmaps)
+  
+  #Identify if heatmap includes credible sets from more than 1 trait
+  csIn2plusTraits<- length(unique(gsub(":[0-9]+","",unique(heatmaps[[1]]$data$cs[!is.na(heatmaps[[1]]$data$cs)]))))>1
+} else {
+  csIn2plusTraits <- FALSE
+}
+
 ```
 
+`r if(!plotFigs && !csIn2plusTraits) "\\begin{comment}"`
+
+# Cross-trait comparisons
+
+`r if(!plotFigs && !csIn2plusTraits) "\\end{comment}"`
 
 `r if(!plotFigs) "\\begin{comment}"`
 
-# SNP-wise trait comparisons {.tabset}
+## SNP-wise summaries {.tabset}
 
-The following plots display comparisons between traits across various measures at a per-SNP level. `r ifelse(exists("finemapReport"),"SNPs are coloured according to any credible set assignments made during per-trait finemapping. PIP values were determined during finemapping, whilst the other","These")` measures were obtained from the GWAS summary statistics.
+These figures compare traits across various measures at a per-SNP level. `r ifelse(exists("finemapReport"),"SNPs are coloured according to any credible set assignments made during per-trait finemapping. PIP values were determined during finemapping, whilst the other","These")` measures were obtained from the GWAS summary statistics.
+
+<details><summary>View figures</summary>
 
 ```{r, eval=plotFigs}
 
@@ -184,7 +206,7 @@ figs <- lapply(figs,function(x){
 
 #Declare the template for the dynamic tabs
 template <- c(
-  "\n\n## {{names}}",
+  "\n\n### {{names}}",
   "```{r, fig.height=8, fig.width=8}",
   "figs[[{{num}}]]",
   "```")
@@ -196,8 +218,39 @@ res<- knitr::knit(text = unlist(tabs),quiet=TRUE)
 cat(res,sep="\n\n")
 ```
 
+</details>
+
+## {-}
 
 `r if(!plotFigs) "\\end{comment}"`
+
+`r if(!csIn2plusTraits) "\\begin{comment}"`
+
+## Linkage disequilibrium across credible sets {.tabset}
+
+The following heatmaps display linkage disequilibrium between SNPs analysed and the top PIP SNPs from each credible set identified across traits. The x-axis displays the SNPs ordered by genomic position; only the positions of the top PIP SNPs are marked. The bar above each plot indicates the credible set assigned to each SNP; those not assigned to a credible set are in white.
+
+<details><summary>View figures</summary>
+
+### All SNPs
+
+```{r, eval=csIn2plusTraits, fig.width=10}
+heatmaps[[1]]
+```
+
+### SNPs within credible sets
+
+```{r, eval=csIn2plusTraits, fig.width=10}
+heatmaps[[2]]
+```
+
+</details>
+
+## {-}
+
+`r if(!csIn2plusTraits) "\\end{comment}"`
+
+___
 
 ```{r, eval=parentParams$rmIntermediates, include=FALSE}
 

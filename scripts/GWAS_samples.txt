@@ -1,6 +1,6 @@
-ID	type	prop	traitSD	p_col	stat_col	N_col	chr_col	pos_col	se_col	snp_col	freq_col	traitLabel	FILEPATH
-ALS	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	FREQ	"Amyotrophic lateral sclerosis"	/scratch/users/k1802739/LAVA/inputs/ALS.sumstats.gz
-AD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	REF.FREQ	"Alzheimer's Disease"	/scratch/users/k1802739/LAVA/inputs/AD.sumstats.gz
-FTD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	REF.FREQ	"Frontotemporal dementia"	/scratch/users/k1802739/LAVA/inputs/FTD.sumstats.gz
-PD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	FREQ	"Parkinson's Disease"	/scratch/users/k1802739/LAVA/inputs/PD.sumstats.gz
-SZ	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	FREQ	"Schizophrenia"	/scratch/users/k1802739/LAVA/inputs/SZ.sumstats.gz
+ID	type	prop	traitSD	p_col	stat_col	N_col	chr_col	pos_col	se_col	snp_col	A1_col	A2_col	freq_col	traitLabel	FILEPATH
+ALS	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	FREQ	"Amyotrophic lateral sclerosis"	/scratch/users/k1802739/LAVA/inputs/ALS.sumstats.gz
+AD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	REF.FREQ	"Alzheimer's Disease"	/scratch/users/k1802739/LAVA/inputs/AD.sumstats.gz
+FTD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	REF.FREQ	"Frontotemporal dementia"	/scratch/users/k1802739/LAVA/inputs/FTD.sumstats.gz
+PD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	FREQ	"Parkinson's Disease"	/scratch/users/k1802739/LAVA/inputs/PD.sumstats.gz
+SZ	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	FREQ	"Schizophrenia"	/scratch/users/k1802739/LAVA/inputs/SZ.sumstats.gz

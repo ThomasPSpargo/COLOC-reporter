@@ -6,7 +6,7 @@
 #####
 MAIN=/scratch/users/k1802739/COLOC-reporter 		#Main directory to work within
 LDREFERENCE=${MAIN}/ld_reference/EUR_phase3_chr		#Location and prefix for per-chromosome reference files in plink-binary format
-plinkpath=plink										#If plink executable cannot be automatically identified by system, specify the relevant file path.
+plinkpath=plink										#If plink executable cannot be automatically identified by system, specify the relevant file path
 
 scriptpath=${MAIN}/scripts		#Path identifying the the location of scripts for running the job and the GWAS_samples.txt input file
 
@@ -15,7 +15,7 @@ comparisons=${MAIN}/scripts/set.regions.txt			#Input file dictating phenotype pa
 
 sumplots=PIP,p,beta,z 								#A comma-separated string passed to --GWASsumplots, see option help documentation for the gwasSummaryPlotter.R script
 
-runMode=doBoth		#Which analysis configuration to run (see documentation).
+runMode=doBoth		#Which analysis configuration to run (see documentation)
 
 
 #####
@@ -46,7 +46,8 @@ for i in $(seq 1 $loops); do	#Loop for each row of $phenos
 		printf "The colocalisation.log file exists in the output directory, analysis is not run\n"
 	else
 		#If no output already, submit as a slurm job
-		sbatch -J ${analysis} -o ${MAIN}/logs/%x.log ${MAIN}/scripts/runColocaliseRegion.job $scriptpath $traits $locus $LDREFERENCE $outpath $sumplots $plinkpath $runMode
+		sbatch -J ${analysis} -o ${MAIN}/logs/%x.log -p cpu --mem-per-cpu 10G -t 1:00:00 --ntasks 1 \
+		${scriptpath}/runColocaliseRegion.job $scriptpath $traits $locus $LDREFERENCE $outpath $sumplots $plinkpath $runMode
 
 		printf "\nOutput will be saved in directory with path and prefix:\n${outpath}\n"
 

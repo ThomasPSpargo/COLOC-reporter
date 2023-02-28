@@ -6,12 +6,12 @@
 #####
 
 #Inputs
-#'build' refers to genome build, e.g. 'GRCh37' while 'chr' refers to chromosome.
+#'chr' refers to chromosome and should be provided to get a complete x-axis title
 #These should be provided to get a complete x-axis title. The function will fall back upon basepair positions
 
 #Define a custom plotting function to be recycled for (optional) summary plots and later for plotting snp pp's
-ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,traits=NULL,
-                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend=NULL,nameShapeLegend=NULL,build=NULL,chr=NULL,compareTraits=FALSE){
+ggSummaryplot <- function(yaxis,bp_range,dset,colourMapping=NULL,shapeMapping=NULL,traits=NULL,
+                          facetTraits=FALSE,facetNrow=NULL,nameColourLegend=NULL,nameShapeLegend=NULL,chr=NULL,compareTraits=FALSE){
   
   #Setup y-axis parameters (and where required adjust data)
   if(tolower(yaxis)=="p"){
@@ -38,7 +38,7 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
     ylab <-  "PIP"
     ystring <- "variable_prob"
   } else if(tolower(yaxis)=="snp.pp"){
-    ylab <- "Posterior probability of being a shared variant"
+    ylab <- "Posterior probability for being shared variant"
     ystring <- "SNP.PP"
   } else if(tolower(yaxis)=="beta"){
     ylab <- ~beta
@@ -48,15 +48,16 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
     ystring <- yaxis
   }
   
-  if(facetTraits==TRUE && !is.null(traits)){
-    dset$trait<- factor(dset$trait,levels=traits,labels = names(traits))
+  if(facetTraits && !is.null(traits)){
+    dset$trait<- factor(dset$trait,levels=traits)
+    if(!is.null(names(traits))) levels(dset$trait) <- names(traits)
   } 
   
   #Rescale x-axis into MBs or KBs
-  if((max(xlim)-min(xlim))>100000){
+  if((max(bp_range)-min(bp_range))>100000){
     xscale <- 1000000
     xscale_magnitude <- " [Mb]"
-  } else if ((max(xlim)-min(xlim))>100) {
+  } else if ((max(bp_range)-min(bp_range))>100) {
     xscale <- 1000
     xscale_magnitude <- " [Kb]"
   } else {
@@ -65,10 +66,9 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
   }
   
   #Setup x-axis label. If Chr is provided try to give a complete legend, otherwise go just by x-limits
-  xrange<- paste0(min(xlim),"-",max(xlim))
+  xrange<- paste0(min(bp_range),"-",max(bp_range))
   if(!is.null(chr)){
-    if(!is.null(build)){ align<- build } else { align <- ""}
-    xlab<- paste0(align,ifelse(align=="","G"," g"),"enomic position",xscale_magnitude,"\n(Chr",chr,":",xrange,")")
+    xlab<- paste0("Genomic position",xscale_magnitude,"\n(Chr",chr,":",xrange,")")
   } else {
     xlab<- paste0("Position",xscale_magnitude," (",xrange,")")
   }
@@ -92,7 +92,7 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
   pos_fig <- ggplot(dset,aes(!!!aesthetics))+
     geom_point(na.rm=TRUE)+
     theme_bw()+
-    scale_x_continuous(limits = xlim,
+    scale_x_continuous(limits = bp_range,
                        breaks = scales::breaks_extended(n=4), 
                        labels = scales::label_number(scale = 1 / xscale,accuracy = 0.01) #Scale axis magnitude dynamically
     )+ 
@@ -110,6 +110,8 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
       list(scale_shape_manual(values=c(17,19),breaks=levels(dset[[which(colnames(dset)==shapeMapping)]])),
                               guides(shape=guide_legend(title=nameShapeLegend,order=2))) } }
   
+  
+  ## Optionally derive a further plot comparing a pair of traits along the x and y axis
   if(compareTraits){
     if(class(dset$trait)=="factor") traits<- levels(dset$trait) else traits<- unique(dset$trait)
     aesthetics$x <- sym(traits[1])
@@ -120,15 +122,11 @@ ggSummaryplot <- function(yaxis,xlim,dset,colourMapping=NULL,shapeMapping=NULL,t
     traitXY_fig<- dset %>%
       dplyr::select(all_of(c("snp","trait",ystring,colourMapping))) %>%
       pivot_wider(values_from = all_of(ystring),names_from = "trait") %>%
-      # mutate(var=factor(ystring,labels=ifelse(class(ylab)=="formula",deparse(ylab),gsub(" ","~",ylab)))
-      #        ) %>%
       ggplot(.,aes(!!!aesthetics))+
-      annotate("rect",xmin=-Inf,xmax=Inf,ymin=-Inf,ymax=Inf,alpha=0.1,colour="azure4")+
       lims(x=lims,y=lims)+
       labs(x=bquote({.(ylab)[~(.(traits[1]))]},splice=TRUE),y=bquote({.(ylab)[~(.(traits[2]))]},splice=TRUE))+
       geom_point(na.rm = TRUE)+
       theme_bw()+
-      #facet_wrap(~var,labeller=label_parsed)+ #Alternatively, use facet wrap (with mutate), for labelling based on a facet strip
       { if(incNegvals) list(geom_hline(yintercept = 0,lty=2),
                             geom_vline(xintercept = 0,lty=2))}+
       { if(!is.null(colourMapping)){  #Optionally add colour aesthetic 
