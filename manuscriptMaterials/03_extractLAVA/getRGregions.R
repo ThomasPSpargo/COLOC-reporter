@@ -2,11 +2,13 @@
 # Author: Thomas Spargo (thomas.spargo@kcl.ac.uk)
 # Obtained from GitHub repository: https://github.com/ThomasPSpargo/COLOC-reporter
 #
-# The purpose of this script is to extract genomic regions highly correlated between two traits as produced by the LAVA software.
+# The purpose of this script is to extract genomic regions highly correlated between two traits as produced by the LAVA software
+# The main output is a plain-text file formatted for use with COLOC-reporter, labelling regions for fine-mapping and colocalisation analysis
 #####
 
 
 suppressMessages(library(optparse))
+library(data.table) #Use data table for automatic detection of field separators 
 
 option_list = list(
   make_option("--indir", action="store", default=".", type='character',
@@ -27,6 +29,8 @@ option_list = list(
               help="Specify a file path to return an additional tab-separated output file including all rows below the threshold set."),
   make_option("--everythingToFile", action="store", default=NULL, type='character',
               help="Specify a file path to return an additional tab-separated output file including all rows. This is primarily for writing out the file with all accompanying FDR adjusted p-values."),
+  make_option("--writeUnivariate", action="store", default=FALSE, type='logical',
+              help="Logical, defaulting to FALSE. If TRUE, return the region list for traits in a univariate, rather than pairwise, manner. Automatically deduplicates repeated univariate analyses, and is not compatible with the --returnPvalue TRUE option; p-values are not returned."),
   make_option("--regionWindow", action="store", default=0, type='numeric',
               help="0 by default. Specify an additional number of base pairs to include around the region identified by LAVA")
 )
@@ -52,7 +56,7 @@ if(!length(files)>0){
 }
 
 for(i in 1:length(files)){
-  lavabivar <- read.table(files[i],header=T)
+  lavabivar <- data.frame(fread(files[i]))
   
   #Set cols to extract in all settings of outFormat
   cols <- c("phen1","phen2")
@@ -86,7 +90,8 @@ for(i in 1:length(files)){
       cols <- c(cols,"chr", "start", "stop")
     }
     
-    if(opt$returnPvalue){
+    #Return p-values per the chosen setting, but override this if writing out univariate results (mainly because p-values would interfere with any deduplication)
+    if(opt$returnPvalue && !opt$writeUnivariate){
       pcols<- colnames(lavabivar)[colnames(lavabivar) %in% c("p","p.fdr")]
       cols <- c(cols,pcols)
       cat("Output file will contain:", paste(pcols,collapse=" & "),"\n")
@@ -95,7 +100,7 @@ for(i in 1:length(files)){
   }
   
   if(!is.null(opt$everythingToFile)){
-    write.table(lavabivar[rows,],
+    write.table(lavabivar,
                 file=opt$everythingToFile,
                 quote=FALSE,
                 append=FALSE,
@@ -127,10 +132,23 @@ for(i in 1:length(files)){
       toWrite$stop  <- toWrite$stop+opt$regionWindow
     }
     
-    #Write regions and drop the old column
+    #Define traits into comma-separated pairs
     toWrite[,1] <- apply(toWrite[,1:2],1,paste,collapse = ',')
     toWrite<- toWrite[,-2]
     names(toWrite)[1] <- "traits"
+    
+    #Optionally convert outfile into a univariate list
+    if(opt$writeUnivariate){
+      #Pivot out traits
+      toWrite<- tidyr::separate_rows(toWrite,"traits",sep=",")
+      
+      #Check for and remove any duplicate rows if they occur
+      deduplicate<- unique.data.frame(toWrite)
+      if(nrow(deduplicate)!=nrow(toWrite)){
+        cat(paste0("Deduplication prior to writing out univariate results removed ",nrow(toWrite)-nrow(deduplicate)," row(s).\n"))
+        toWrite <- deduplicate
+      }
+    }
     
     if(opt$outFormat=="genomicRegion") {
       #Concatenate the genomic region into a comma separated list, then drop the old columns

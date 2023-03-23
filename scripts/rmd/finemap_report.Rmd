@@ -52,7 +52,7 @@ knitr::opts_chunk$set(echo = FALSE,
 traitname <- ifelse(!is.null(names(params$trait)),names(params$trait),params$trait)
 
 #reformat NA values as just a dash
-options(knitr.kable.NA = '-',digits = 3)
+options(knitr.kable.NA = '--',digits = 3)
 ```
 
 ___
@@ -183,7 +183,7 @@ if(class(summary)!="character"){
   
   
   #Establish the width of the nearby genes column relative to the number of breaks made by str_wrap
-  longGenescolumn<-summary[[genesCol[2]]]
+  longGenescolumn<-summary[[genesCol[1]]]
   maxLength<- longGenescolumn[nchar(longGenescolumn)==max(nchar(longGenescolumn))]
   nWraps<- str_count(str_wrap(maxLength,width=80),"\n")
   

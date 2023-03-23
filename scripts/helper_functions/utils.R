@@ -62,6 +62,18 @@ getNearbyGenes <- function(bp_range,genesInChr,highConfidence=FALSE){
   return(nearbyGenes)
 }
 
+##Quick function for generating dataset summaries
+datasetSummary <- function(x){
+  datasummary<- data.frame(NSNP=length(x$snp),
+                           N_GWAS_sig_5e.8=sum(x$pvalues<5e-8),
+                           p_min = min(x$pvalues),
+                           p_minSNP = paste(x$snp[which(x$pvalues==min(x$pvalues))],collapse=", "),
+                           beta_max = abs(x$beta[which(abs(x$beta)==max(abs(x$beta)))][1]),
+                           beta_maxSNP = paste(x$snp[which(abs(x$beta)==max(abs(x$beta)))],collapse=", ")
+  )
+  return(datasummary)
+}
+
 #This is a wrapper around render to simplify report writing
 renderReport<- function(params,outfile,template){
   rmarkdown::render(template,

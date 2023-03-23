@@ -115,8 +115,8 @@ The column headers used in the template should be included. Each column indicate
 - p_col: Column name for p-values
 - stat_col: Column name for test statistic, expects column referring to the beta coefficients, if odds ratios given, column must be called 'OR', and these will be converted to the betas. 
 - N_col: Column name detailing sample size per snp. For `type=cc` trait, effective sample size is recommended, in which case `prop` option should be `0.5`
-- chr_col: Column name for chromosome
-- pos_col: Column name for genomic position
+- chr_col: Column name for chromosome (If set to `NA`, then chromosome and positions columns are taken from the reference dataset)
+- pos_col: Column name for genomic position (If set to `NA`, then chromosome and positions columns are taken from the reference dataset)
 - se_col: Column name for standard error of beta coefficients
 - snp_col: Column name for SNP ids, rsID is expected
 - A1_col: Column name for effect allele
@@ -222,9 +222,9 @@ __Output files per-analysis__
 
 _Analysis summary_
 
-The file `./coloc/results/<prefix>_coloc/colocalisation.log`, where `<prefix>` identifies the name given to a particular analysis, gives an overview of the results obtained from `colocaliseRegion.R`. The summary includes description of initial summary statistic processing and indicates where more detailed analysis outputs can be found.
+The file `./coloc/results/<prefix>_coloc/analysis_report.html`, where `<prefix>` identifies the name given to a particular analysis, contains a report of all analysis steps performed. This is the best resource for understanding the results.
 
-The file `./coloc/results/<prefix>_coloc/analysis_report.html` contains a comprehensive report of the fine-mapping step and related quality control across traits analysed. The other steps are not yet implemented into a report so please refer to the `colocalisation.log` file for now.
+The file `./coloc/results/<prefix>_coloc/colocalisation.log` also provides an overview of the results obtained from `colocaliseRegion.R` and is output as an analysis progresses. If problems arise with an analysis, this file may help identify at which point an analysis is failing.
 
 The directory `./coloc/results/<prefix>_coloc/tables/` contains all tabular summaries generated within completed analyses. The most important outputs, which overview fine-mapping and colocalisation result, can be found in:
 - `results_summary_coloc_abf.csv`
@@ -312,29 +312,16 @@ bash ./scripts/collectGWASSummaryPlots.sh ./coloc/results ./coloc/results/allSum
 bash ./scripts/collectCredibleSetLDPlots.sh ./coloc/results ./coloc/results/allCSLDFigures
 ```
 
-### LAVA integration
+### Acknowledgements
 
-[LAVA](https://github.com/josefin-werme/lava) is a software for performing local genetic correlation analysis. It is one approach for identifying genomic regions where variants may colocalise.
+This resource was developed by:
+- [Thomas Spargo](thomas.spargo@kcl.ac.uk)
+- [Lachlan Gilchrist](lachlan.gilchrist@kcl.ac.uk)
+- [Dr Oliver Pain](oliver.pain@kcl.ac.uk)
+- [Dr Alfredo Iacoangeli](alfredo.iacoangeli@kcl.ac.uk)
 
-We provide facilities for extracting and visualising outputs from LAVA.
+whilst at King's College London. Please address any correspondence regarding the workflow to Thomas Spargo.
 
-__Extracting regions with significant local genetic correlation from LAVA outputs__
+The Fine-mapping analysis and associated quality-control steps are implemented via the [`susieR`](https://stephenslab.github.io/susieR/index.html) package, and [`coloc`](https://chr1swallace.github.io/coloc/) is used for analysis of shared variation between traits.
 
-The `set.regions.txt` input file can be readily generated from LAVA outputs by calling the `./scripts/extractLAVA.R` script, directing to a directory which contains the results of bivariate genetic correlations using LAVA. By default, the script expects files with the extension '.bivar'
-
-An example use of this script is provided in `runextractLAVA.sh`.
-
-Further details for options when using this R script are available by calling `Rscript ./scripts/extractLAVA.R --help`.
-
-__Visualising univariate and bivariate analysis from LAVA__
-
-The `./scripts/plotLAVAoutputs.R` script generates plots to visualise analyses from LAVA.
-
-When applied to a bivariate correlation output file, two plots are returned: First, a plot which visualises genetic correlations at examined loci; Second, a manhattan-style plot indicating p-values for each locus.
-
-When applied to univariate heritability analysis from LAVA, a single manhattan plot is returned.
-This analysis is used as a filtering step in LAVA prior to bivariate analysis. Only loci passing the set p-value threshold of univariate analysis for both traits will have been carried forward to bivariate genetic correlation analysis.
-
-This visualisation script can be applied recursively to all univariate and bivariate outputs contained within a given directory (and indicated respectively using `.univ` and `.bivar` file extensions), by applying the `./scripts/runplotLAVAoutputs.sh` script.
-
-Further details for options when using the LAVA visualisation R script are available by calling `Rscript ./scripts/plotLAVAoutputs.R --help`.
+If you use this resource for any of your work, please cite the software packages used. Further citation details are provided in the report generated when running an analysis. Please also cite the preprint associated with this repository __TBD__.

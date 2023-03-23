@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH -c 16
+#SBATCH --mem-per-cpu 5G
+# (note: this is written for a slurm job scheduler, adapt as necessary)
+export OMP_NUM_THREADS=1 # n/o threads per process (important for parallelisation)
+
+### This job script which will copy all the data to the temp dir, perform the analysis for a single phenotype pair, and copy the results back
+
+# parameters passed from the submission script
+source $1 # path for settings file
+P1=$2 # phenotype 1
+P2=$3 # phenotype 2
+ncompar=$4 #Number of comparisons to correct for with univariate threshold
+
+# copy data to tempdir
+#cp $DATA/$P1.sumstats.txt $DATA/$P2.sumstats.txt $TMPDIR	# sumstats
+zcat $DATA/$P1.sumstats.gz > $TMPDIR/$P1.sumstats.txt	# unzip and move sumstats
+zcat $DATA/$P2.sumstats.gz > $TMPDIR/$P2.sumstats.txt	# unzip and move sumstats 
+cp $DATA/$INFOFILE $DATA/$OVERLAP $DATA/$LOCFILE $TMPDIR	# info file / sample overlap / locus file
+cp $REFDIR/$REFDAT* $TMPDIR					# reference data
+cp lava_rg.R $TMPDIR						# analysis script
+cd $TMPDIR
+
+## ANALYSE ## 
+Rscript lava_rg.R $REFDAT $LOCFILE $INFOFILE $OVERLAP "$P1;$P2" "$P1.$P2" $ncompar
+
+# copy results to local output dir (as specified in settings.sh) 
+cp *univ *bivar $OUT

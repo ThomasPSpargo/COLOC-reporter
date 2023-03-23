@@ -49,7 +49,7 @@ if(grepl("univ",opt$infile)){
 phenos<- gsub(".*/","",gsub("\\.(univ|bivar)","",opt$infile))
 
 #Import dataset 
-data <- read.delim(opt$infile,sep=" ",header = TRUE)
+data <- read.delim(opt$infile,sep="\t",header = TRUE)
 
 
 #Calculate x-axis positions relevant for each chromosome
@@ -130,7 +130,7 @@ if(type=="bivar"){
   #Plot row
   rhop <- ggplot(data,aes(x=locus,y=rho,color=chr %% 2==0))+
     geom_point()+
-    geom_errorbar(aes(ymin=rho.lower,ymax=rho.upper),width=0.2,
+    geom_errorbar(aes(ymin=rho.lower,ymax=rho.upper),width=0,
                   position=position_dodge(width = 0.6))+
     #geom_hline(yintercept=0)+  #Plot a 'no association line
     geom_hline(aes(yintercept = mean(rho),linetype="LAVA average"), linetype="dotted", color = "grey40",show.legend =TRUE)+  #plots of mean association

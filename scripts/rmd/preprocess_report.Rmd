@@ -1,0 +1,131 @@
+---
+title: "Preprocessing report"
+author: "[COLOC-reporter](https://github.com/ThomasPSpargo/COLOC-reporter)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+    
+params:
+  saveopts: NULL
+  traits: NULL
+  target_region: NULL
+  initial_data_overview: NULL
+  ref_harmonised_data_overview: NULL
+  final_data_overview: NULL
+  
+---
+
+<!---
+Lines like the following are paired with matching lines including \\end{comment}, which selectively disable report sections based on conditions specified in inline R code
+(c.f https://stackoverflow.com/questions/39550732/is-there-a-way-to-have-conditional-markdown-chunk-execution-in-rmarkdown)
+`r if(is.null(params$example)) {"\\begin{comment}"}`
+--->
+
+
+```{r, include=FALSE}
+library(kableExtra)
+library(tidyverse)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      warning= FALSE,
+                      results = 'asis'
+)
+
+#reformat NA values as just a dash
+options(knitr.kable.NA = '--',digits = 3)
+
+#Preprocessing data table names
+prettyHeader<- c("Traits","Total","p<5e-8",#"N SNPs p <5e-8",
+                 "Value","SNP ID","Value","SNP ID")
+prettyHeaderAbove<-c(" "=1,"Number of SNPs"=2,"Smallest p-value" = 2, "Largest absolute beta" = 2)
+
+```
+
+___
+
+### Preprocessing summary {.tabset}
+
+<details><summary>View options set</summary>
+
+```{r}
+
+enframe(params$saveopts) %>% 
+  mutate(value=as.character(value),
+         name=paste0("-- -- ",name)) %>%
+  rename(Option=name,`Current setting`=value) %>%
+kable(.,align = "c",
+      row.names=FALSE) %>%
+kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+scroll_box(width = "100%", height = "400px")
+
+```
+
+</details>
+
+<br>
+
+Analysis will be performed for the traits `r paste(params$traits, collapse=", ")` in the genomic region `r params$target_region`.
+
+The following tables provide a quick overview of the data available in the region before any processing, after harmonising with the reference, and after harmonising across the analysed traits.
+
+`r if(is.null(params$initial_data_overview)) "\\begin{comment}"`
+
+
+#### Initial data
+
+``` {r, eval=!is.null(params$initial_data_overview)}
+
+overview<- params$initial_data_overview
+
+overview$p_min <- as.character(signif(overview$p_min,3))
+
+kable(overview,align = "c", row.names=FALSE,col.names =prettyHeader) %>%
+  kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+  add_header_above(prettyHeaderAbove)
+
+```
+
+`r if(is.null(params$initial_data_overview)) "\\end{comment}"`
+
+`r if(is.null(params$ref_harmonised_data_overview)) "\\begin{comment}"`
+
+#### Harmonised with reference
+
+``` {r, eval=!is.null(params$ref_harmonised_data_overview)}
+
+overview<- params$ref_harmonised_data_overview
+
+overview$p_min <- as.character(signif(overview$p_min,3))
+
+kable(overview,align = "c", row.names=FALSE,col.names =prettyHeader) %>%
+  kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+  add_header_above(prettyHeaderAbove)
+
+```
+
+`r if(is.null(params$ref_harmonised_data_overview)) "\\end{comment}"`
+
+`r if(is.null(params$final_data_overview)) "\\begin{comment}"`
+
+#### Harmonised across traits
+
+``` {r, eval=!is.null(params$final_data_overview)}
+
+overview<- params$final_data_overview
+
+overview$p_min <- as.character(signif(overview$p_min,3))
+
+kable(overview,align = "c", row.names=FALSE,col.names =prettyHeader) %>%
+  kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) %>%
+  add_header_above(prettyHeaderAbove)
+
+```
+
+`r if(is.null(params$final_data_overview)) "\\end{comment}"`
+
+<!--- Extra HTML to force removal of whitespace caused by the table of contents --->
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>

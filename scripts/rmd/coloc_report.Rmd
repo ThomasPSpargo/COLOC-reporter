@@ -1,0 +1,144 @@
+---
+title: "Colocalisation report"
+author: "[COLOC-reporter](https://github.com/ThomasPSpargo/COLOC-reporter)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+    
+params:
+  colocPriors: NULL
+  coloc_abf_summary: NULL
+  coloc_susie_summary: NULL
+  abf.PP.plot: NULL
+  abf.PP.plot.geneNear: NULL
+  susie.PP.plots: NULL
+  
+---
+
+<!---
+Lines like the following are paired with matching lines including \\end{comment}, which selectively disable report sections based on conditions specified in inline R code
+(c.f https://stackoverflow.com/questions/39550732/is-there-a-way-to-have-conditional-markdown-chunk-execution-in-rmarkdown)
+`r if(is.null(params$example)) {"\\begin{comment}"}`
+--->
+
+
+```{r, include=FALSE}
+library(kableExtra)
+library(patchwork)
+library(tidyverse)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      warning= FALSE,
+                      results = 'asis'
+)
+
+#reformat NA values as just a dash
+options(knitr.kable.NA = '--',digits = 3)
+```
+
+___
+
+`r if(is.null(params$coloc_abf_summary)) "\\begin{comment}"`
+
+### coloc.abf analysis
+
+This table overviews the results of colocalisation analysis across all sampled SNPs, under an assumption of at most one implicated variant per-trait. Analysis was performed with the priors `r paste(paste0(names(params$colocPriors$coloc.abf),"=",params$colocPriors$coloc.abf),collapse=", ")`. Documentation for `coloc.abf` can be viewed [here](https://chr1swallace.github.io/coloc/reference/coloc.abf.html).
+
+``` {r, eval=!is.null(params$coloc_abf_summary)}
+
+as.list(params$coloc_abf_summary) %>% data.frame(.) %>% mutate(across(matches("PP.H",.),~as.character(signif(.,3)))) %>%
+  kable(.,align = "c",
+        row.names=FALSE) %>%
+  kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) 
+
+```
+
+
+`r if(is.null(params$coloc_abf_summary)) "\\end{comment}"`
+
+`r if(is.null(params$coloc_susie_summary)) "\\begin{comment}"`
+
+### coloc.susie analysis
+
+This table overviews the results of colocalisation `r ifelse(nrow(params$coloc_susie_summary)>1,"analyses across pairs of","analysis across")` credible sets identified during the fine-mapping step. Analysis was performed with the priors `r paste(paste0(names(params$colocPriors$coloc.susie),"=",params$colocPriors$coloc.susie),collapse=", ")`. Documentation for `coloc.susie` can be viewed [here](https://chr1swallace.github.io/coloc/reference/coloc.susie.html).
+
+``` {r, eval=!is.null(params$coloc_susie_summary)}
+
+params$coloc_susie_summary %>%
+  mutate(across(matches("PP.H",.),~as.character(signif(.,3)))) %>%
+  kable(.,align = "c",
+        row.names=FALSE) %>%
+  kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) 
+
+```
+
+`r if(is.null(params$coloc_susie_summary)) "\\end{comment}"`
+
+`r if(is.null(params$abf.PP.plot) || is.null(params$susie.PP.plots)) "\\begin{comment}"`
+
+### SNP-wise posterior probability plots {.tabset}
+
+Across these tabs are figures displaying per-SNP posterior probabilities for being a variant shared between traits. These posterior probabilities sum to 1 across all SNPs analysed and are predicated on the assumption that a shared variant exists; 95% credible SNPs are those spanned by the top 0.95 of posterior probabilities.
+
+If any genes were found overlapping the base pair range spanned by the 95% credible SNPs ±10kb, then additional plots are returned displaying these overlaps. Further details on overlapping genes can be foind in the `tables` output directory.
+
+NOTE: These plots are only returned for comparisons from coloc.abf or coloc.susie which show >0.2 posterior probability for the shared-variant hypothesis (PP.H4). However, this is an extremely lenient threshold and the results should be considered when H4 is more strongly supported.
+
+`r if(is.null(params$abf.PP.plot) || is.null(params$susie.PP.plots)) "\\end{comment}"`
+
+`r if(is.null(params$abf.PP.plot)) "\\begin{comment}"`
+
+#### coloc.abf {.tabset}
+
+##### All SNPs
+
+```{r eval=!is.null(params$abf.PP.plot)}
+params$abf.PP.plot
+```
+
+##### 95% credible SNPs with nearby genes
+
+```{r eval=!is.null(params$abf.PP.plot.geneNear)}
+params$abf.PP.plot.geneNear
+```
+
+`r if(is.null(params$abf.PP.plot)) "\\end{comment}"`
+
+`r if(is.null(params$susie.PP.plots)) "\\begin{comment}"`
+
+```{r, results='asis',eval=!is.null(params$susie.PP.plots), echo=FALSE}
+
+#Declare the template for the dynamic tabs
+template <- c(
+    "\n\n#### coloc.susie row `r gsub('row','',names(params$susie.PP.plots)[{{num}}])` {.tabset}",
+    "##### All SNPs",
+    "```{r}",
+    "params$susie.PP.plots[[{{num}}]]$ALLsnps",
+    "```",
+    "\n\n##### 95% credible SNPs with nearby genes",
+    "```{r}",
+    "params$susie.PP.plots[[{{num}}]]$snpsWgenes",
+    "```"
+    )
+
+
+coloc.susiePlots <- lapply(seq_along(params$susie.PP.plots),
+  function(num) knitr::knit_expand(text = template)
+)
+
+res<- knitr::knit(text = unlist(coloc.susiePlots),quiet=TRUE)
+cat(res,sep="\n\n")
+
+```
+
+`r if(is.null(params$susie.PP.plots)) "\\end{comment}"`
+
+
+<!--- Extra HTML to force removal of whitespace caused by the table of contents
+
+<div class="tocify-extend-page" data-unique="tocify-extend-page" style="height: 0;"></div>
+--->
+

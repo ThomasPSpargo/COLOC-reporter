@@ -60,11 +60,12 @@ parentParams <- params
 unlockBinding("params",env=environment()) 
 
 
-# #For testing
+# # #For testing
 # parentParams$funsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
 # parentParams$rmdDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/rmd"
 # parentParams$rdsInputDir <- "~/Downloads"
-# parentParams$rmIntermediates <- FALSE
+#parentParams$rdsInputDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/globalReportInputs"
+#parentParams$rmIntermediates <- FALSE
 
 ## Read-in custom helper functions [required for successful generation of the finemap report]
 list.files(parentParams$funsDir,full.names = TRUE,pattern=".R") %>%
@@ -106,13 +107,23 @@ if(!file.exists(parentParams$crossTraitHeatmaps)) parentParams$crossTraitHeatmap
 
 # Preprocessing
 
-Placeholder
+<!-- Render the preprocessing report as a child document ---->
+
+```{r, eval=!is.null(parentParams$P01)}
+params <- readRDS(parentParams$P01)
+```
+
+```{r, eval=!is.null(parentParams$P01), child=file.path(parentParams$rmdDir,'preprocess_report.Rmd')}
+```
 
 `r if(is.null(parentParams$P01)) "\\end{comment}"`
 
 `r if(is.null(parentParams$P02)) "\\begin{comment}"`
 
 # Finemapping
+
+<!-- Render the finemapping report generated for each of the traits analysed ---->
+
 
 ```{r, results='asis',eval=!is.null(parentParams$P02), echo=FALSE}
 
@@ -141,11 +152,20 @@ cat(res,sep="\n\n")
 
 # Colocalisation analysis
 
-Placeholder
+<!-- Render the colocalisation report as a child document ---->
+
+```{r, eval=!is.null(parentParams$P01)}
+params <- readRDS(parentParams$P03)
+```
+
+```{r, eval=!is.null(parentParams$P03), child=file.path(parentParams$rmdDir,'coloc_report.Rmd')}
+```
 
 `r if(is.null(parentParams$P03)) "\\end{comment}"`
 
 ___
+
+<!-- Prepare for cross-trait comparisons (nothing is provided to the report before the next H1 header) ---->
 
 ```{r, include=FALSE}
 #Provisionally read-in the SNPwise and credible set LD summary figures.
@@ -220,8 +240,6 @@ cat(res,sep="\n\n")
 
 </details>
 
-## {-}
-
 `r if(!plotFigs) "\\end{comment}"`
 
 `r if(!csIn2plusTraits) "\\begin{comment}"`
@@ -246,11 +264,39 @@ heatmaps[[2]]
 
 </details>
 
-## {-}
-
 `r if(!csIn2plusTraits) "\\end{comment}"`
 
 ___
+
+# References
+
+This workflow draws upon software packages for analysis of genetic variants represented within genome-wide association study summary statistics and genotype data from a population reference. Please cite the resources used in any publications that include these analyses.
+
+```{r}
+
+ref_table <- NULL
+ref_table <- rbind(ref_table, data.frame(Name = 'SuSiE',
+                                         DOI = paste0(collapse="; ", c('[10.1371/journal.pgen.1010299](https://doi.org/10.1371/journal.pgen.1010299)', '[10.1111/rssb.12388](https://doi.org/10.1111/rssb.12388)')),
+                                         URL = 'https://stephenslab.github.io/susieR/index.html',
+                                         Use = 'Univariate fine-mapping'))
+
+ref_table <- rbind(ref_table, data.frame(Name = 'coloc',
+                                         DOI = paste0(collapse="; ",c( '[10.1371/journal.pgen.1009440](https://doi.org/10.1371/journal.pgen.1009440)', '[10.1371/journal.pgen.1004383](https://doi.org/10.1371/journal.pgen.1004383)')),
+                                         URL = 'https://chr1swallace.github.io/coloc/',
+                                         Use = 'Colocalisation analysis'))
+                                         
+ref_table <- rbind(ref_table, data.frame(Name = 'PLINK',
+                                         DOI = paste0(collapse="; ",c( '[10.1086/519795](https://doi.org/10.1086/519795)')),
+                                         URL = 'http://pngu.mgh.harvard.edu/purcell/plink/',
+                                         Use = 'Estimating linkage disequilibrium between variants'))
+
+
+ref_table %>% 
+  kable(align = "c", row.names=FALSE) %>%
+  kable_styling(c("striped","hover"), full_width = F,fixed_thead = T) 
+
+```
+
 
 ```{r, eval=parentParams$rmIntermediates, include=FALSE}
 
