@@ -77,7 +77,7 @@ params$coloc_susie_summary %>%
 
 `r if(is.null(params$coloc_susie_summary)) "\\end{comment}"`
 
-`r if(is.null(params$abf.PP.plot) || is.null(params$susie.PP.plots)) "\\begin{comment}"`
+`r if(is.null(params$abf.PP.plot) && is.null(params$susie.PP.plots)) "\\begin{comment}"`
 
 ### SNP-wise posterior probability plots {.tabset}
 
@@ -87,7 +87,7 @@ If any genes were found overlapping the base pair range spanned by the 95% credi
 
 NOTE: These plots are only returned for comparisons from coloc.abf or coloc.susie which show >0.2 posterior probability for the shared-variant hypothesis (PP.H4). However, this is an extremely lenient threshold and the results should be considered when H4 is more strongly supported.
 
-`r if(is.null(params$abf.PP.plot) || is.null(params$susie.PP.plots)) "\\end{comment}"`
+`r if(is.null(params$abf.PP.plot) && is.null(params$susie.PP.plots)) "\\end{comment}"`
 
 `r if(is.null(params$abf.PP.plot)) "\\begin{comment}"`
 

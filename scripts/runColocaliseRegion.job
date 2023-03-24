@@ -68,7 +68,8 @@ printf "\nAttempting to generate LD heatmaps for fine-mapping credible sets acro
 
 Rscript ${scriptpath}/crosstrait_CS_LDHeatmaps.R \
 		--susieFitsDir ${outpath}_coloc/data/finemapping \
-		--LDinfo ${outpath}_coloc/data/LDmatrix/ld_matrix \
+		--LDreference $LDREFERENCE \
+		--plink $plinkpath \
 		--harmonisedSumstats ${outpath}_coloc/data/datasets/harmonised_sumstats.csv \
 		--helperFunsDir "${scriptpath}/helper_functions" \
 		--rdsOut "${outpath}_coloc/data/globalReportInputs/crossTraitLDHeatmaps" \

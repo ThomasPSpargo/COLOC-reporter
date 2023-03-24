@@ -401,7 +401,10 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
     cat("Done\n")
     sink()
     
+    #Remove any LD files if newly generated
+    rmLDfiles <- TRUE
   } else {
+    rmLDfiles <- FALSE
     sink(file = logfile, append = T)
     cat("Existing LD matrix found, skipping call to PLINK.\n")
     sink()
@@ -411,6 +414,13 @@ if(opt$runMode %in% c("trySusie", "doBoth","finemapOnly")){
   ld <- as.matrix(fread(expect[2]))
   ld_names<- scan(expect[1],what=character())
   dimnames(ld)<-list(ld_names, ld_names) #assign dimnames to LD object
+  
+  #Remove any LD files if newly generated and remove the directory if it is now empty
+  if(rmLDfiles){
+    system(paste("rm",expect[1],expect[2], file.path(ld_dir,"ld_matrix.log"),file.path(ld_dir,"snplist.txt"),collapse=" "))
+    if(length(list.files(ld_dir))==0) system(paste("rmdir",ld_dir)) #rmdir should only drop the directory if empty; should be safe.
+  }
+  
   
   #As a sanity check, redo alignment based on plink output order to ensure snps are correctly arranged in base pair order, and assign 'positions' for coloc
   sums.region <- lapply(sums.region, function(x){

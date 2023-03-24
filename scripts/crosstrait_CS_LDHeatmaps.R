@@ -14,8 +14,12 @@ option_list = list(
 
 make_option("--susieFitsDir", action="store", default=NULL, type='character',
             help="Path to directory containing Rds files storing fine-mapping results. Note that at least 1 credible set is expected across traits."),
-make_option("--LDinfo", action="store", default=NULL, type='character',
-            help="Path and prefix for ld matrix files relating to the susie model fits; expects files ending with the suffixes: '.snplist','.ld'"),
+make_option("--LDmatrix", action="store", default=NULL, type='character',
+            help="Path and prefix for ld matrix files containing all SNPs used within SuSiE fine-mapping analysis; expects files ending with the suffixes: '.snplist','.ld' [optional; required if --LDreference is not provided]"),
+make_option("--plink", action="store", default='plink', type='character',
+            help="Path to PLINK executable (syntax written for PLINK 1.9). By default, has the value 'plink' [only required if using --LDreference option"),
+make_option("--LDreference", action="store", default=NA, type='character',
+            help="Path to, and prefix for, per-chromosome PLINK binary files used to compute LD matrix for SNPs analysed. Expected format of <prefix>i[.bim/.bed/.fam], where i is the chromosome number [optional; required if --LDmatrix is not provided]"),
 make_option("--harmonisedSumstats", action="store", default=NULL, type='character',
             help="A file containing harmonised summary statistic information relating to the files from susieFitsDir"),
 make_option("--helperFunsDir", action="store", default=NULL, type='character',
@@ -44,11 +48,8 @@ if(opt$rdsOnly && is.null(opt$rdsOut)) warning("Rds files will not be saved the 
 test <- FALSE # test <- TRUE            
 if(test){
   opt <- list()
-  # opt$susieFitsDir <- "~/Downloads/finemapping"
-  # opt$LDinfo <- "~/Downloads/LDmatrix/ld_matrix"
-  # opt$harmonisedSumstats <- "~/Downloads/harmonised_sumstats.csv"
   opt$susieFitsDir <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/finemapping"
-  opt$LDinfo <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/LDmatrix/ld_matrix"
+  opt$LDmatrix <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/LDmatrix/ld_matrix"
   opt$harmonisedSumstats <- "/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/testing/tidy_processingTEST_PD.SZ.chr17_coloc/data/datasets/harmonised_sumstats.csv"
   
   opt$helperFunsDir <- "~/OneDrive - King's College London/PhD/PhD project/COLOC/git.local.COLOC-reporter/scripts/helper_functions"
@@ -85,15 +86,47 @@ sets <- tibble(fread(opt$harmonisedSumstats))
 heatmapSets<- unique.data.frame(sets[c("snp","cs","pos")]) #Extract the positional information
 
 ######
-### Read in the LD matrix and dimnames
+### Read in or generate the LD matrix
 ######
+
 suffix <- c(".snplist",".ld")
-LDpath <- paste0(opt$LDinfo,suffix)
+if(!is.null(opt$LDmatrix)){
+  LDpath <- paste0(opt$LDmatrix,suffix)
+} else {
+  LDpath <- paste0("ld_matrix",suffix)
+}
+
+if(any(!file.exists(LDpath))){
+  cat("Computing LD matrix...")
+  
+  #Write out sampled SNPs and generate LD matrix
+  write(heatmapSets$snp, file="temp_snplist_forLDmatrix.txt")
+  
+  #Syntax based on plink v 1.9
+  system(paste0(opt$plink,' --bfile ', opt$LDreference,sets$chr[1],
+                ' --extract temp_snplist_forLDmatrix.txt',
+                ' --r square',
+                ' --write-snplist',
+                ' --keep-allele-order',
+                ' --out ld_matrix'))
+  
+  cat("Done\n")
+  
+  #Logical to indicate to remove any LD files if they were newly generated
+  rmLDfiles <- TRUE
+} else {
+  rmLDfiles <- FALSE
+  cat("Existing LD matrix found, skipping call to PLINK.\n")
+}
 
 #Read in the ld matrix and snp names as returned by plink 
 ld <- as.matrix(fread(LDpath[2]))
 ld_names<- scan(LDpath[1],what=character())
 dimnames(ld)<-list(ld_names, ld_names) #assign dimnames to LD object
+
+#Remove any LD files if newly generated
+if(rmLDfiles) system("rm ld_matrix.ld ld_matrix.log ld_matrix.snplist temp_snplist_forLDmatrix.txt")
+
 
 ## Ensure that, minimally, all credible set SNPs are represented in the LD matrix
 #Extract Ids for all snps assigned to credible sets

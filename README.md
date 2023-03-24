@@ -92,9 +92,6 @@ Rows 4 and 5 respectively indicate that a region should be analysed across 3 tra
 
 The `--runMode` option of `colocaliseRegion.R` allows further control over the analysis protocol (e.g. setting `finemapOnly` declares that only processing steps until and including fine-mapping should be performed)
 
-Note: If analysis regions have been identified using the LAVA local genetic correlation [software](https://github.com/josefin-werme/lava), then we provide a script for readily identifying target regions from LAVA output files and generating the file `set.regions.txt` (See the __[LAVA integration](https://github.com/ThomasPSpargo/COLOC-reporter#lava-integration])__ section below).
-
-
 __GWAS_samples.txt__
 
 Information about the input configurations for traits to analyse should be detailed in the `./scripts/GWAS_samples.txt` file. An example this file is as follows:
@@ -315,10 +312,10 @@ bash ./scripts/collectCredibleSetLDPlots.sh ./coloc/results ./coloc/results/allC
 ### Acknowledgements
 
 This resource was developed by:
-- [Thomas Spargo](thomas.spargo@kcl.ac.uk)
-- [Lachlan Gilchrist](lachlan.gilchrist@kcl.ac.uk)
-- [Dr Oliver Pain](oliver.pain@kcl.ac.uk)
-- [Dr Alfredo Iacoangeli](alfredo.iacoangeli@kcl.ac.uk)
+- [Thomas Spargo](mailto:thomas.spargo@kcl.ac.uk)
+- [Lachlan Gilchrist](mailto:lachlan.gilchrist@kcl.ac.uk)
+- [Dr Oliver Pain](mailto:oliver.pain@kcl.ac.uk)
+- [Dr Alfredo Iacoangeli](mailto:alfredo.iacoangeli@kcl.ac.uk)
 
 whilst at King's College London. Please address any correspondence regarding the workflow to Thomas Spargo.
 
