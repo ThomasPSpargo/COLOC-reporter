@@ -14,10 +14,14 @@ option_list = list(
               help="INFO threshold [optional]"),
   make_option("--maf", action="store", default=0.01, type='numeric',
               help="MAF threshold [optional]"),
+  make_option("--exclude_region", action="store", default=NULL, type='character',
+              help="Plain text file with the header CHR, START, and STOP. File rows indicate genomic regions to exclude [optional]"),
   make_option("--maf_diff", action="store", default=0.2, type='numeric',
               help="Difference between reference and reported MAF threshold [optional]"),
   make_option("--insert_ref_maf", action="store", default=T, type='logical',
               help="Set to T to insert reference allele frequency [optional]"),
+  make_option("--SDcheck", action="store", default="none", type='character',
+              help="Specify 'quant' to perform check of whether SD is reasonable for all snps in a quantitative trait, or 'binary' to check for a binary trait. see doi: 10.1093/bioinformatics/btaa1029, section 3.4"),
   make_option("--gz", action="store", default=T, type='logical',
               help="Set to T to gzip summary statistics [optional]"),
   make_option("--output", action="store", default='./Output', type='character',
@@ -74,11 +78,17 @@ sink(file = paste(opt$output,'.log',sep=''), append = T)
 cat('Reading in ref_plink_chr\n')
 sink()
 
+#Not run alternative syntax for reading in all autosomes bim file
+# #If the string 'chr' is detected, then expect per-chromosome reference files, otherwise, read from a single file
+# if(grepl("chr$",basename(opt$ref_plink_chr))){
 ref_bim<-NULL
 for(i in 1:22){
   bim<-fread(paste0(opt$ref_plink_chr,i,'.bim'))
   ref_bim<-rbind(ref_bim, bim)
 }
+# } else {
+#   ref_bim<-fread(opt$ref_plink_chr)
+# }
 
 names(ref_bim)<-c('CHR','SNP','POS','BP','A1','A2')
 ref_bim$POS<-NULL
@@ -86,6 +96,7 @@ ref_bim$POS<-NULL
 sink(file = paste(opt$output,'.log',sep=''), append = T)
 cat('ref_plink_chr contains',dim(ref_bim)[1],'variants.\n')
 sink()
+
 
 #####
 # Remove SNPs that are not in ref_bim
@@ -98,6 +109,33 @@ cat('After removal of variants that are not in ref_bim,',dim(GWAS)[1],'variants 
 sink()
 
 #####
+# Remove SNPs within genomic regions indicated by file pointed to within --exclude_region option
+#####
+if(!is.null(opt$exclude_region)){
+  
+  exclregions <- fread(opt$exclude_region)
+  
+  for(i in 1:nrow(exclregions)){
+    
+    sink(file = paste(opt$output,'.log',sep=''), append = T)
+    cat(paste0("Excluding variants within the region chr",exclregions[i,"CHR"],":",exclregions[i,"START"],"-",exclregions[i,"STOP"],"...\n"))
+    sink()
+    
+    #Identify SNPs in region from reference dataset
+    ref_bim_excl <- ref_bim[ref_bim$BP >= exclregions[i,"START"] & ref_bim$BP <= exclregions[i,"STOP"] & ref_bim$CHR == exclregions[i,"CHR"],]
+    
+    #Identify any GWAS SNPs in the exclusion region and remove
+    region_overlap <- which(GWAS$SNP %in% ref_bim_excl$SNP)
+    if(length(region_overlap)>0) GWAS <- GWAS[-region_overlap,]
+    
+    #Print number dropped
+    sink(file = paste(opt$output,'.log',sep=''), append = T)
+    cat(length(region_overlap),'variants this region have been dropped,',dim(GWAS)[1],'variants remain.\n')
+    sink()
+  }
+}
+
+#####
 # Remove variants that are not SNPs or were strand-ambiguous.
 #####
 
@@ -107,6 +145,7 @@ GWAS<-GWAS[nchar(GWAS$A1) == 1 & nchar(GWAS$A2) == 1,]
 GWAS$A1 <- toupper(GWAS$A1)
 GWAS$A2 <- toupper(GWAS$A2)
 
+#IUPAC codes: https://www.snp-nexus.org/v4/guide/
 GWAS$IUPAC[GWAS$A1 == 'A' & GWAS$A2 =='T' | GWAS$A1 == 'T' & GWAS$A2 =='A']<-'W'
 GWAS$IUPAC[GWAS$A1 == 'C' & GWAS$A2 =='G' | GWAS$A1 == 'G' & GWAS$A2 =='C']<-'S'
 GWAS$IUPAC[GWAS$A1 == 'A' & GWAS$A2 =='G' | GWAS$A1 == 'G' & GWAS$A2 =='A']<-'R'
@@ -311,23 +350,161 @@ if(sum(names(GWAS) == 'FREQ') == 1 & !is.na(opt$ref_freq_chr)){
 }
 
 #####
-# Insert reference MAF
+# Insert reference MAF [and check for discordant SD]
 #####
 
-if(opt$insert_ref_maf == T & !is.na(opt$ref_freq_chr) & sum(names(GWAS) == 'FREQ') == 0){
+if(!is.na(opt$ref_freq_chr)){
   freq_all<-freq_all[,c('SNP','A1','A2','MAF')]
   gwas_ref_freq_match<-merge(GWAS,freq_all,by=c('SNP','A1','A2'))
   gwas_ref_freq_switch<-merge(GWAS,freq_all,by.x=c('SNP','A1','A2'),by.y=c('SNP','A2','A1'))
   gwas_ref_freq_switch$MAF<-1-gwas_ref_freq_switch$MAF
-  gwas_ref_freq<-rbind(gwas_ref_freq_match, gwas_ref_freq_switch) 
+  gwas_ref_freq<-rbind(gwas_ref_freq_match, gwas_ref_freq_switch)
   names(gwas_ref_freq)[names(gwas_ref_freq) == 'MAF']<-'REF.FREQ'
   GWAS<-gwas_ref_freq
   rm(gwas_ref_freq,gwas_ref_freq_switch,gwas_ref_freq_match)
+
+  if(opt$insert_ref_maf == T & sum(names(GWAS) == 'FREQ') == 0){
+    keeprefmaf <- TRUE
+    sink(file = paste(opt$output,'.log',sep=''), append = T)
+    cat('Reference allele frequency inserted.\n', sep='')
+    sink()
+  } else {
+    keeprefmaf <- FALSE
+  }
   
-  sink(file = paste(opt$output,'.log',sep=''), append = T)
-  cat('Reference allele frequency inserted.\n', sep='')
-  sink()
+  ######
+  ### Check for discordant SD in the sumstats
+  ### Requires reference allele frequency
+  ### c.f. https://doi.org/10.1093/bioinformatics/btaa1029
+  ### https://privefl.github.io/bigsnpr/articles/LDpred2.html
+  ######
+  if(tolower(opt$SDcheck) %in% c("binary","quant")){
+
+    #Compute (validation) SD from reference FREQ:
+    #https://privefl.github.io/bigsnpr/articles/LDpred2.html
+    GWAS$sd_af <- with(GWAS,
+                       sqrt(2 * REF.FREQ * (1 - REF.FREQ)))
+    
+    #For binary traits eqn numerator is 2, and for quant traits, standard deviation for phenotype (sdY)
+     if(tolower(opt$SDcheck)=="binary"){
+       numerator <- 2
+     } else {
+       #Estimate sdY via one of the two methods proposed:
+       #https://doi.org/10.1093/bioinformatics/btaa1029
+       numerator <-with(GWAS,
+                        min(sqrt(0.5)*SE*sqrt(N)))
+       # numerator <-with(GWAS,
+       #                  median(sd_af*SE*sqrt(N)))
+     }
+    
+    #Denominators for eqns are equivalent for binary and quant phenotypes
+    #The code used is equation 1/2 from this paper:
+    #https://www.sciencedirect.com/science/article/pii/S2666247722000525
+    GWAS$sd_ss <- with(GWAS,
+                       numerator / sqrt(N * SE^2 + BETA^2))
+    
+    #however, an alternate version is proposed in eqn 3 here:
+    #https://doi.org/10.1093/bioinformatics/btaa1029
+    # GWAS$sd_ss <- with(GWAS,
+    #                    numerator /(SE*sqrt(N)))
+
+    #Check for snps with greatly deviating SD:
+    #https://doi.org/10.1093/bioinformatics/btaa1029
+    GWAS$is_bad <- with(GWAS,
+                        sd_ss < (0.5 * sd_af) | sd_ss > (sd_af + 0.1) |
+                        sd_ss < 0.1 | sd_af < 0.05)
+    
+    # #### If GWAS allele frequency provided, repeat SD check with in-sample variant frequency and an imputed N
+    # Compute and check Allele frequency validation from the FREQ column provided [If same population ≈ REF.FREQ]
+    if("FREQ" %in% colnames(GWAS)){
+      sink(file = paste(opt$output,'.log',sep=''), append = T)
+      cat('Imputing N for sample based on GWAS-reported allele frequencies, BETA, and SE.\n', sep='')
+      sink()
+      
+      #Standard deviation for GWAS based on allele frequencies
+      GWAS$sd_sumstataf <- with(GWAS,
+                                sqrt(2 * FREQ * (1 - FREQ)))
+      
+      #Impute N and repeat SD check relative to the new N value
+      GWAS$impN<-with(GWAS,
+                      (4/(sd_sumstataf^2)-(BETA^2))/(SE^2))
+
+      #Calculate the in-sample SD based on imputed N
+      GWAS$sd_ss_impN <- with(GWAS,
+                              numerator / sqrt(impN * SE^2 + BETA^2))
+      
+      #Run the SD check
+      GWAS$is_bad_impN <- with(GWAS,
+                               sd_ss_impN < (0.5 * sd_af) | sd_ss_impN > (sd_af + 0.1) |
+                               sd_ss_impN < 0.1 | sd_af < 0.05)
+      
+      sink(file = paste(opt$output,'.log',sep=''), append = T)
+      cat('SD check with imputed N suggests retention of:', sum(!GWAS$is_bad_impN), "variants. Check this and plots for compararability to the main SD check.\n", sep='')
+      sink()
+      
+      #Prepare to plot the main SD check and the imputed-N version
+      pltwidth<- 2400
+    } else {
+      #If FREQ is not in the in-sample dataset, skip imputation of N and plot main SD check with a single panel
+      #Declare width for subsequent plot
+      pltwidth<- 1200
+      
+      sink(file = paste(opt$output,'.log',sep=''), append = T)
+      cat('SD check could not be repeated using an imputed N because FREQ is not present for the GWAS sample.\n', sep='')
+      sink()
+    }
+    
+    #Plot the SD check (and if freq column is present, plot a 2nd panel with N imputed from freq)
+    #To reduce overplotting, only draw 1/100 snps
+    subsamp<- sample(x=c(TRUE,FALSE),size=nrow(GWAS),replace=TRUE,prob=c(0.01,0.99))
+    
+    bitmap(paste0(opt$output,'.SD_check_plot.png'), unit='px', res=300, width=pltwidth, height=1200)
+    
+    if("FREQ" %in% colnames(GWAS)){par(mfrow=c(1,2))} #Accommodate 2 panels
+    
+    #Plot from the main dataset
+    plot(GWAS$sd_af[subsamp],GWAS$sd_ss[subsamp],col=ifelse(GWAS$is_bad[subsamp],"black","chartreuse2"),
+         xlab="SD from Reference AF",
+         ylab = "SD from sumstats",
+         main = "Reported N"
+         #xlim=c(0,1),ylim=c(0,1)
+    )
+    abline(a=0,b=1,lty=2)
+    legend("topleft", inset=c(0,0), legend=c("TRUE","FALSE"),pch=1, col=c("black","chartreuse2"), title="Failed check?")
+    
+    if("FREQ" %in% colnames(GWAS)){ #plot 2nd panel
+      #Plot from the dataset using an imputed N
+      plot(GWAS$sd_af[subsamp],GWAS$sd_ss_impN[subsamp],col=ifelse(GWAS$is_bad_impN[subsamp],"black","chartreuse2"),
+           xlab="SD from Reference AF",
+           ylab = "SD from sumstats",
+           main = "Imputed N"
+           #xlim=c(0,1),ylim=c(0,1)
+      )
+      abline(a=0,b=1,lty=2)
+      
+      #Drop additional cols
+      GWAS$sd_sumstataf <- GWAS$impN <- GWAS$sd_ss_impN <- GWAS$is_bad_impN <- NULL
+    }
+    dev.off()
+    
+    #Remove snps failing QC step
+    GWAS <- GWAS[!GWAS$is_bad,]
+    
+    sink(file = paste(opt$output,'.log',sep=''), append = T)
+    cat('After removal of SNPs failing SD check based on reported N and reference AF,',dim(GWAS)[1],' variants remain.\n')
+    sink()
+  
+    #Drop columns, and remove ref freq only if not being retained
+    GWAS$sd_af <- NULL
+    GWAS$sd_ss <- NULL
+    GWAS$is_bad <- NULL
+  }
+  
+  #Lastly, keep or remove the reference allele frequency
+  if(!keeprefmaf) GWAS$REF.FREQ <- NULL
+  rm(keeprefmaf)
 }
+
 
 #####
 # Remove SNPs with out-of-bounds p-values
