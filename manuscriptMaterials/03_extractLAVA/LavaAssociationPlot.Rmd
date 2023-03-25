@@ -1,0 +1,160 @@
+---
+title: "Generate multi-panel figure of LAVA associations"
+author: "[COLOC-reporter](https://github.com/ThomasPSpargo/COLOC-reporter)"
+date: "`r Sys.Date()`"
+output:
+  html_document
+---
+
+```{r, SETUP}
+
+suppressMessages({
+  library(ggplot2)
+  library(patchwork)
+  library(dplyr)
+  library(ggrepel)
+  library(kableExtra)
+})
+
+#Read in the data
+data<- read.table("/Users/tom/OneDrive - King's College London/PhD/PhD project/COLOC/FilesForManuscript/LAVAall_writeup.tsv",sep="\t",header=TRUE) %>%
+  mutate(compar=factor(paste0(phen1," : ",phen2)),
+         p.fdr=p.adjust(p, method="fdr"),
+         signif = case_when(p<0.05/nrow(.) ~ "Bonfer",
+                            p.fdr<0.05 ~ "FDR",
+                            TRUE ~ NA_character_
+         ))
+
+#Compute the factor with trait pairs which will display on plot y-axis as A-Z
+data$compar <- factor(data$compar,levels=rev(levels(data$compar)))
+
+#Show the first few rows
+kableExtra::kable(head(data),align="c") %>%
+  kableExtra::kable_styling()
+```
+
+## Prep data
+```{r}
+#Initial set up
+
+#Generate chromosome breaks. lag function indicates to compare to the previous record
+chrBreaks<- unique.data.frame(data[,c("locus","chr")]) %>%
+  arrange(locus) %>%
+  mutate(newchr=if_else(lag(chr)!=chr,TRUE,FALSE))
+
+#Identify the centrepoint for the chromosome, then tag to the nearest locus available in chrbreaks
+xLabs<- chrBreaks %>%
+  group_by(chr) %>%
+  summarise(centre=mean(locus)) %>%
+  rowwise() %>%
+  mutate(nearestLocus=chrBreaks$locus[abs(chrBreaks$locus-centre)==min(abs(chrBreaks$locus-centre))])
+```
+
+## Generate the barcode plot
+
+```{r, fig.height=4,fig.width=10}
+
+corrBarcodes<-  ggplot(data,aes(y=compar,x=factor(locus),fill=rho,colour=rho))+
+  geom_tile()+
+  scale_fill_distiller(palette = "RdYlBu", guide="colourbar",
+                       limit = c(-1,1), direction=-1,
+                       na.value = "white",name=bquote(~r[g])
+  )+
+  scale_colour_distiller(palette = "RdYlBu", guide="none",
+                       limit = c(-1,1), direction=-1,
+                       na.value = "white")+
+  coord_cartesian(expand=FALSE)+
+  scale_x_discrete(label = xLabs$chr, breaks = factor(xLabs$nearestLocus))+
+  labs(x="Chromosome",y="Trait pair")+
+  theme_minimal()+
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), axis.ticks.x = element_blank(),panel.grid = element_blank())
+
+corrBarcodes
+```
+
+## Generate the chromosome annotation bar
+
+Note that the bar goes above and below the figure
+
+```{r, fig.height=1,fig.width=10}
+
+#Generate a second figure matching the dataset displaying a discrete colour bar to mark credible sets above the plot
+chrBar<- ggplot(chrBreaks,aes(y=1,x=factor(locus),fill=chr %% 2==0))+
+  geom_raster()+
+  scale_fill_manual(values = rep(c("black", "grey45"), #c("#2FD095", "#D02F6A"), 
+                                 length(unique(chrBreaks$chr))),guide="none")+
+  coord_cartesian(expand=FALSE)+
+  labs(x="Chromosome")+
+  theme(axis.text.y = element_blank(),
+        axis.ticks = element_blank(),axis.title.y = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"))
+
+#Annotate the plot with a bar top and bottom, label only the odd chromosomes
+chrBarTop <- chrBar +
+  scale_x_discrete(label = xLabs$chr[xLabs$chr %% 2!=0], breaks = xLabs$nearestLocus[xLabs$chr %% 2!=0],position="top")+
+  theme(axis.title.x = element_blank())
+
+chrBarBottom <- chrBar +
+  scale_x_discrete(label = xLabs$chr[xLabs$chr %% 2!=0], breaks = xLabs$nearestLocus[xLabs$chr %% 2!=0],position="bottom")
+
+#Show example
+chrBarBottom
+```
+
+
+## Generate a Manhattan plot
+
+```{r, fig.height=4, fig.width=10}
+
+#Setup a colour palette to (colours taken from plot SuSiE)
+ggpalette = c("dodgerblue2", "green4", "#6A3D9A", "#FF7F00", 
+              "gold1", "skyblue2", "#FB9A99", "palegreen2", "#CAB2D6", 
+              "#FDBF6F", "gray70", "khaki2", "maroon", "orchid1", "deeppink1", 
+              "blue1", "steelblue4", "darkturquoise", "green1", "yellow4", 
+              "yellow3", "darkorange4", "brown")
+
+corrManhat<-  ggplot(data,aes(y=-log10(p),x=factor(locus),colour=compar,shape=signif))+
+  geom_point(position="jitter")+
+  scale_colour_manual(values=ggpalette,breaks=rev(levels(data$compar)))+
+  scale_shape_manual(values=c(15,17),na.value = 19,
+                     breaks=c("Bonfer","FDR"),
+                     labels=c(parse(text=paste0("P<",gsub("e", "%*%10^", signif(0.05/nrow(data),3)))),
+                              bquote(~P[fdr]<0.05)))+
+  #geom_hline(yintercept = -log10(0.05/nrow(data)),lty=2)+ # Bonferroni line
+  geom_hline(yintercept = -log10(max(data$p[data$p.fdr<0.05]))-0.01,lty=2)+ # FDR line
+  scale_x_discrete(label = xLabs$chr, breaks = factor(xLabs$nearestLocus), expand= expansion(mult = c(0,0)))+
+  scale_y_continuous(expand=expansion(mult = c(0,0.01)))+
+  labs(x="Relative genomic position",colour="Trait pair",y=bquote(-log[10]~p),shape="Significance")+
+  theme_minimal()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.key.height = unit(5, 'mm'), #Decrease legend spacing
+        axis.line.x.bottom = element_line())
+
+
+corrManhat
+```
+
+## Label top Manhattan hits and  combine all plots
+
+```{r, fig.height=6, fig.width=8}
+
+
+#Stack with patchwork
+Fullstack <- chrBarTop/corrManhat/corrBarcodes/chrBarBottom+plot_layout(guides = 'collect',heights=c(0.5,8,8,0.5))
+
+
+ggsave("~/Downloads/fullstackplot.pdf",Fullstack,width=200,height=140,units="mm",dpi=300)
+
+
+#Show full plot
+Fullstack
+
+```
+
+
+
+

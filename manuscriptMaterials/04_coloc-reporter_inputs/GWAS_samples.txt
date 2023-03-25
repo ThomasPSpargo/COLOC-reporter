@@ -1,0 +1,6 @@
+ID	type	prop	traitSD	p_col	stat_col	N_col	chr_col	pos_col	se_col	snp_col	A1_col	A2_col	freq_col	traitLabel	FILEPATH
+ALS	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	FREQ	"Amyotrophic lateral sclerosis"	/users/k1802739/SUMSTATS/ALS/ALS_sumstats_vanRheenen.clean.pt05.gz
+AD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	REF.FREQ	"Alzheimer's Disease"	/users/k1802739/SUMSTATS/AD/AD_sumstats_Kunkle.clean.pt05.gz
+FTD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	REF.FREQ	"Frontotemporal dementia"	/users/k1802739/SUMSTATS/FTD/FTD_GWAS_META.clean.pt05.gz
+PD	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	FREQ	"Parkinson's Disease"	/users/k1802739/SUMSTATS/PD/PD_sumstats_Nalls.clean.pt05.gz
+SZ	cc	0.5	NA	P	BETA	N	CHR	BP	SE	SNP	A1	A2	FREQ	"Schizophrenia"	/users/k1802739/SUMSTATS/SZ/SZ_sumstats_PGC.clean.pt05.gz

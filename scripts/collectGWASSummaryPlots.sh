@@ -84,6 +84,13 @@ if [[ -f ${matchRds[0]} ]]; then
 R -s -e 'cat("Concatenating across summary figure lists... ")
 separateplots <- list.files(".",full.names=TRUE,pattern=".Rds")
 collectedplots <- lapply(separateplots,readRDS)
+
+#Extract genomic region spanned by each plot and assign trait comparison names
+chr_bp<- gsub(".*\n\\\((.*)\\\)","\\\\1",sapply(collectedplots, function(x)x[[1]]$bpfigure$labels$x))
+#Apply meaningful names to the plots to indicate their analysis
+names(collectedplots) <- paste0(lapply(collectedplots,function(x)paste0(levels(x$p$bpfigure$data$trait),collapse="_")),"_",chr_bp)
+
+#Save the file
 saveRDS(collectedplots,file="allSummaryPlots.Rds")
 cat("Done!\n")'
 	

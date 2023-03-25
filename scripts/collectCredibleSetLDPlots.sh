@@ -9,6 +9,12 @@
 # Set directory containing all COLOC-reporter scripts
 scriptpath=/scratch/users/k1802739/COLOC-reporter/scripts
 
+# Set path to per-chromosome genotype reference files
+LDREFERENCE=/scratch/users/k1802739/COLOC-reporter/ld_reference/EUR_phase3_chr
+
+# #If plink executable cannot be automatically identified by system, specify the relevant file path
+plinkpath=plink
+
 #Directory containing all analyses. Assumes the working directory unless passed as a trailing argument to the script.
 dir=${1:-$(pwd)}
 
@@ -36,12 +42,13 @@ for i in $(basename -a ${inputDir}/*/); do
 	#Generate cross-trait Credible-set LD heatmaps per analysis
 	Rscript ${scriptpath}/crosstrait_CS_LDHeatmaps.R \
 		--susieFitsDir ${inputDir}/${i}/data/finemapping \
-		--LDinfo ${inputDir}/${i}/data/LDmatrix/ld_matrix \
+		--LDreference $LDREFERENCE \
+		--plink $plinkpath \
 		--harmonisedSumstats ${inputDir}/${i}/data/datasets/harmonised_sumstats.csv \
 		--helperFunsDir "${scriptpath}/helper_functions" \
 		--rdsOut "./plots_$i" \
 		--rdsOnly TRUE
-				
+	
 done
 
 #If Rds files have been output, read-in and concatenate them into a single list which will be returned in the output directory
@@ -51,6 +58,11 @@ if [[ -f ${matchRds[0]} ]]; then
 R -s -e 'cat("Concatenating across per-analysis Rds files... ")
 separateplots <- list.files(".",full.names=TRUE,pattern=".Rds")
 collectedplots <- lapply(separateplots,readRDS)
+
+#Assign names based on credible sets extracted and genomic region spanned
+chr_bp<- gsub(".*\\\((.*)\\\)","\\\\1",sapply(collectedplots,function(x)x$heatmap_allSNPs$labels$x))
+names(collectedplots) <- paste0("csFor_",lapply(collectedplots,function(x) paste0(unique(gsub(".*\\\((.*)\\\:.*","\\\\1",x$heatmap_allSNPs$data$leadSNP)),collapse="_")),"_",chr_bp)
+
 saveRDS(collectedplots,file="allPlots.Rds")
 cat("Done!\n")'
 	

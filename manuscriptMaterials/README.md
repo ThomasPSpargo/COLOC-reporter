@@ -40,7 +40,7 @@ The results of all bivariate analysis from LDSC can be summarised within a singl
 
 ### 02_LAVA_analyses
 
-LAVA is a software which enables 'local' genetic correlation analysis stratifying the genome across semi-independent linkage disequilibrium blocks. Before local genetic correlation analysis is performed between pairs of traits, LAVA derives univariate heritability estimates across trait pairs to remove any regions without sufficient heritability in both of the compared traits for for robust correlation analysis.
+LAVA is a software which enables 'local' genetic correlation analysis stratifying the genome across semi-independent linkage disequilibrium blocks. Before local genetic correlation analysis is performed between pairs of traits, LAVA derives univariate heritability estimates to remove any regions without sufficient heritability in both of the compared traits for robust correlation analysis.
 
 The local genetic correlation analysis performed is based on scripts provided in the [LAVA GitHub repository](https://github.com/josefin-werme/LAVA). The LAVA repository provides instructions for installing the LAVA R package (v0.1.0) and information about the file structures for the analysis. The updated scripts used for the current analyses are provided here.
  
@@ -48,11 +48,18 @@ To briefly overview the analysis protocol: The `lava_rg.sh` script is called to 
 
 ### 03_extractLAVA
 
-This directory contains a small group of helper scripts for extracting the results of analyses with LAVA. Run `extract_LAVA.sh` to generate these results.
+This directory contains several scripts for extracting and inspecting the results of analysis with LAVA. 
 
-`extract_LAVA.sh` calls to:
+Run `extract_LAVA.sh` to obtain the main LAVA results. This script calls to:
 
 - `getRGregions.R` to prepare files in the format of `set.regions.txt` expected by COLOC-reporter (one file output uses a Bonferroni correction p-value threshold and the other threshold of P<sub>FDR</sub> <0.5). The LAVA results file is also returned with FDR-adjusted P-values appended.
 
 - `plotLAVAoutputs.R` to visualise local univariate heritability and bivariate genetic correlation analyses performed by LAVA.
 
+The `SNP_rg_sig_comparison.R` script can be used to cross-tabulate local genetic correlation significance against occurence of genome-wide significant associations from the compared GWAS.
+
+`LavaAssociationPlot(.Rmd/.html)` overviews the script for visualising all bivariate analyses from LAVA.
+
+### 04_coloc-reporter_inputs
+
+This directory contains COLOC-reporter specific input files used for the analyses in the manuscript. Refer to the root directory of this repository for details on their use.

@@ -279,12 +279,12 @@ To collect figures of comparisons of GWAS summary statistics across all analyses
 
 To collect heatmaps of linkage disequilibrum relative to the top PIP SNPs from credible sets identified across traits from all analyses, use the script: `./scripts/collectCredibleSetLDPlots.sh`
 
-Before running either script, please adapt the script to specify the full path to the `./scripts` directory.
+Before running either script, please adapt the required file paths at the beginning of the file.
 
 The scripts for collecting plots across multiple analyses can be run one of two ways.
 
 Option 1:
-- Navigate to the parent directory for all analyses  from `loopColocaliseRegion.sh`
+- Navigate to the parent directory for all analyses from `loopColocaliseRegion.sh`
 - Run the scripts, declaring the full file path to the script
 
 ```
