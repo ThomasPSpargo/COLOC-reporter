@@ -154,7 +154,7 @@ cat(res,sep="\n\n")
 
 <!-- Render the colocalisation report as a child document ---->
 
-```{r, eval=!is.null(parentParams$P01)}
+```{r, eval=!is.null(parentParams$P03)}
 params <- readRDS(parentParams$P03)
 ```
 
