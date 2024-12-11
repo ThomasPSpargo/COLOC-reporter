@@ -58,7 +58,9 @@ Run `extract_LAVA.sh` to obtain the main LAVA results. This script calls to:
 
 The `SNP_rg_sig_comparison.R` script can be used to cross-tabulate local genetic correlation significance against occurence of genome-wide significant associations from the compared GWAS.
 
-`LavaAssociationPlot(.Rmd/.html)` overviews the script for visualising all bivariate analyses from LAVA.
+`LavaAssociationPlot.Rmd` overviews the script for visualising all bivariate analyses from LAVA.
+
+`Investigate_local_rg_characteristics.R` compares the local genetic correlations between positively and negatively correlated loci and builds the volcano / boxplots supplementary figure included within the manuscript.
 
 ### 04_coloc-reporter_inputs
 

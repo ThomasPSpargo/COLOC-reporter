@@ -321,4 +321,6 @@ whilst at King's College London. Please address any correspondence regarding the
 
 The Fine-mapping analysis and associated quality-control steps are implemented via the [`susieR`](https://stephenslab.github.io/susieR/index.html) package, and [`coloc`](https://chr1swallace.github.io/coloc/) is used for analysis of shared variation between traits.
 
-If you use this resource for any of your work, please cite the software packages used. Further citation details are provided in the report generated when running an analysis. Please also cite the preprint associated with this repository __TBD__.
+If you use this resource for any of your work, please cite the software packages used. Further citation details are provided in the report generated when running an analysis. Please also cite the manuscript associated with this repository:
+
+Spargo TP, Gilchrist L, Hunt GP, Dobson RJ, Proitsi P, Al-Chalabi A, Pain O, Iacoangeli A. Statistical examination of shared loci in neuropsychiatric diseases using genome-wide association study summary statistics. _eLife_. 2023. doi: [10.7554/eLife.88768](https://doi.org/10.7554/eLife.88768).
